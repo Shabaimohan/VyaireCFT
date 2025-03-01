@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  This template deploys an RDS PostgreSQL instance with secrets stored in AWS Secrets Manager.
+
+Resources:
+  ApplicationPlatformLogDeliveryRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Statement:
+            - Action:
+                - sts:AssumeRole
+              Effect: Allow
+              Principal:
+                Service:
+                  - sns.amazonaws.com
+        Policies:
+          - PolicyName: AllowLogging
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                    - logs:PutMetricFilter
+                    - logs:PutRetentionPolicy
+                  Resource:
+                    - "*"
+
+
+  FirebaseApplicationPlatform:
+    Type: Custom::SNSApplicationPlatform
+    Properties:
+      ServiceToken: !GetAtt ApplicationPlatformLogDeliveryRole.Arn
+      Platform: BAIDU
+      Name: some-cool-name
+      Attributes:
+        PlatformCredential: !Join ['', ['{{resolve:secretsmanager:', "rkpfire", ':SecretString:privatekey}}' ]] 
+        PlatformPrincipal: !Join ['', ['{{resolve:secretsmanager:', "rkpfire", ':SecretString:clientemail}}' ]]
+

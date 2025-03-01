@@ -1,0 +1,578 @@
+#yaml-language-server: $schema=https://raw.githubusercontent.com/awslabs/goformation/master/schema/cloudformation.schema.json
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  This template is used to deploy a simple vpc
+Parameters:
+  Region:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    #Default: 10.192.0.0/16
+
+  PubSubnet12bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this Subnet
+    Type: String
+
+  PubSubnet22bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this Subnet
+    Type: String
+
+  PubSubnet32bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  PubSubnet12aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  PubSubnet22aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  PubSubnet32aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  DBSubnet12bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this Subnet
+    Type: String
+
+  SVCSubnet22bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this Subnet
+    Type: String
+
+  PresSubnet32bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  DBSubnet12aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  SVCSubnet22aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  PresSubnet32aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  DBSubnet32cCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+
+  GatewayEndpointResource:
+    Description: Please enter the resource ARN
+    Type: String
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-VPC'
+  ###################Public Subnets#################################
+  PubSubnet12a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref PubSubnet12aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-public-'
+              - !Select
+                - 0
+                - !GetAZs ''
+
+  PubSubnet22a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref PubSubnet22aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-mgmt-'
+              - !Select
+                - 0
+                - !GetAZs ''
+
+  PubSubnet32a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref PubSubnet32aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-web-'
+              - !Select
+                - 0
+                - !GetAZs ''
+
+  PubSubnet12b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref PubSubnet12bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-public-'
+              - !Select
+                - 1
+                - !GetAZs ''
+
+  PubSubnet22b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref PubSubnet22bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-mgmt-'
+              - !Select
+                - 1
+                - !GetAZs ''
+
+  PubSubnet32b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref PubSubnet32bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-web-'
+              - !Select
+                - 1
+                - !GetAZs ''
+  ##################### IGW #######################
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} IGW
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+  ################# Route ##########################
+  PublicRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  MgmtRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  WebRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable3
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  ################## Public Route Table ###########################
+  RouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-public'
+
+  RouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-mgmt'
+
+  RouteTable3:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-web'
+  ############################# Route table Association ###########################
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet12a
+      RouteTableId: !Ref RouteTable1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet12b
+      RouteTableId: !Ref RouteTable1
+
+  MgmtSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet22a
+      RouteTableId: !Ref RouteTable2
+
+  MgmtSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet22b
+      RouteTableId: !Ref RouteTable2
+
+  WebSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet32a
+      RouteTableId: !Ref RouteTable3
+
+  WebSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet32b
+      RouteTableId: !Ref RouteTable3
+  ################################ Private Subnet ################################
+  DBSubnet12a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref DBSubnet12aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-db-'
+              - !Select
+                - 0
+                - !GetAZs ''
+
+  SVCSubnet22a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref SVCSubnet22aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-svcs-'
+              - !Select
+                - 0
+                - !GetAZs ''
+
+  PresSubnet32a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ''
+      CidrBlock: !Ref PresSubnet32aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-pres-'
+              - !Select
+                - 0
+                - !GetAZs ''
+
+  DBSubnet12b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref DBSubnet12bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-db-'
+              - !Select
+                - 1
+                - !GetAZs ''
+
+  SVCSubnet22b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref SVCSubnet22bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-svcs-'
+              - !Select
+                - 1
+                - !GetAZs ''
+
+  PresSubnet32b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ''
+      CidrBlock: !Ref PresSubnet32bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-pres-'
+              - !Select
+                - 1
+                - !GetAZs ''
+
+  DBSubnet12c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 2
+        - !GetAZs ''
+      CidrBlock: !Ref DBSubnet32cCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-db-'
+              - !Select
+                - 0
+                - !GetAZs ''
+
+  ################## Private Route Table ###########################
+  PvtRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-SVCS'
+
+  ############################# Route table Association ###########################
+  DBSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBSubnet12a
+      RouteTableId: !Ref PvtRouteTable1
+
+  DBSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBSubnet12b
+      RouteTableId: !Ref PvtRouteTable1
+
+  SVCSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SVCSubnet22a
+      RouteTableId: !Ref PvtRouteTable1
+
+  SVCSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SVCSubnet22b
+      RouteTableId: !Ref PvtRouteTable1
+
+  PresSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PresSubnet32a
+      RouteTableId: !Ref PvtRouteTable1
+
+  PresSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PresSubnet32b
+      RouteTableId: !Ref PvtRouteTable1
+
+  DBSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBSubnet12c
+      RouteTableId: !Ref PvtRouteTable1
+
+  ####################### NGW ########################
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP.AllocationId
+      SubnetId: !Ref PubSubnet12a
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-NAT'
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  #  NATRouteTable1:
+  #    Type: AWS::EC2::RouteTable
+  #    Properties:
+  #      VpcId: !Ref VPC
+  #      Tags:
+  #        - Key: Name
+  #          Value: !Join ['', ["sample-",!Ref "EnvironmentName", "-SVCS"]]
+
+  RouteNATGateway:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PvtRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  ################## Gateway Endpoint #############################
+
+  S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Gateway
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Ref GatewayEndpointResource #change the resource accordingly
+      RouteTableIds:
+        - !Ref PvtRouteTable1
+        - !Ref RouteTable1
+      Tags:
+        - Key: Name
+          Value: !Join
+            - ''
+            - - sample-
+              - !Ref EnvironmentName
+              - '-endpoint'
+
+################## Security Group #################

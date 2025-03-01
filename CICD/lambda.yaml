@@ -1,0 +1,113 @@
+parameters:
+  - name: env
+    type: string
+    default: dev
+
+jobs:
+  - deployment: DeployWebsite
+    displayName: Deploy Website
+    environment: "messenger-${{ parameters.env }}"
+    pool: 'VMSS Messenger Pool'
+    variables:
+      env: "${{ parameters.env }}" 
+      artifactName: Messenger
+      awsSecretName: "messenger-${{ parameters.env }}-secrets"
+      lambdaFunctionName: "messenger-${{ parameters.env }}-lambda"
+      ebAppName: "messenger-${{ parameters.env }}"
+      ebEnvName: "messenger-${{ parameters.env }}-env"
+      s3Bucket: "messenger-app-deployment"
+      ebZipFile: "messenger-app.zip"
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - download: current
+              displayName: "Download artifacts"
+              artifact: "$(artifactName)"
+
+            # Install AWS CLI
+            - script: |
+                pip install awscli
+              displayName: "Install AWS CLI"
+
+            # Set AWS Credentials
+            - powershell: |
+                [Environment]::SetEnvironmentVariable("AWS_ACCESS_KEY_ID", "$(AWS_ACCESS_KEY_ID)", [EnvironmentVariableTarget]::Machine)
+                [Environment]::SetEnvironmentVariable("AWS_SECRET_ACCESS_KEY", "$(AWS_SECRET_ACCESS_KEY)", [EnvironmentVariableTarget]::Machine)
+              displayName: "Set AWS Credentials"
+
+            # Fetch secrets from AWS Secrets Manager
+            - script: |
+                aws secretsmanager get-secret-value \
+                  --secret-id "$(awsSecretName)" \
+                  --query SecretString \
+                  --output text > secrets.json
+              displayName: "Fetch secrets from AWS Secrets Manager"
+
+            # Extract Build Scripts
+            - task: ExtractFiles@1
+              displayName: "Extract Build Scripts"
+              inputs:
+                archiveFilePatterns: "$(Pipeline.Workspace)/$(artifactName)/build-scripts.zip"
+                destinationFolder: build-scripts
+
+            # Zip AWS Lambda Package
+            - task: ArchiveFiles@2
+              displayName: "Zip AWS Lambda Function"
+              inputs:
+                rootFolderOrFile: "$(Pipeline.Workspace)/$(artifactName)/lambda-function"
+                archiveFile: "$(Pipeline.Workspace)/$(artifactName)/lambda.zip"
+                includeRootFolder: false
+
+            # Deploy AWS Lambda Function (Update existing function)
+            - script: |
+                aws lambda update-function-code \
+                  --function-name "$(lambdaFunctionName)" \
+                  --zip-file fileb://$(Pipeline.Workspace)/$(artifactName)/lambda.zip \
+                  --region us-east-1
+              displayName: "Deploy AWS Lambda"
+
+            # Invoke AWS Lambda to Run Database Migration
+            - powershell: |
+                $lambdaFunctionName = "$(lambdaFunctionName)"
+                $response = aws lambda invoke --function-name $lambdaFunctionName response.json
+                Write-Host "Lambda Response: $(Get-Content response.json)"
+              displayName: "Invoke AWS Lambda for Database Migration"
+
+            # Inject configuration values into Vue.js frontend
+            - powershell: |
+                $Params = @{
+                  WebApiPath = "$(Pipeline.Workspace)/$(artifactName)/Vyaire.Messenger.zip"
+                }
+                ./build-scripts/InjectWebConfiguration.ps1 @Params
+              displayName: "Inject configuration values into Vue.js"
+
+            # Zip the Web Application for Elastic Beanstalk Deployment
+            - task: ArchiveFiles@2
+              displayName: "Zip Web App for Elastic Beanstalk"
+              inputs:
+                rootFolderOrFile: "$(Pipeline.Workspace)/$(artifactName)/Vyaire.Messenger"
+                archiveFile: "$(Pipeline.Workspace)/$(ebZipFile)"
+                includeRootFolder: false
+
+            # Upload ZIP to S3
+            - script: |
+                aws s3 cp "$(Pipeline.Workspace)/$(ebZipFile)" "s3://$(s3Bucket)/$(ebZipFile)"
+              displayName: "Upload Web App ZIP to S3"
+
+            # Deploy to AWS Elastic Beanstalk
+            - script: |
+                aws elasticbeanstalk create-application-version \
+                  --application-name "$(ebAppName)" \
+                  --version-label "$(Build.BuildId)" \
+                  --source-bundle S3Bucket="$(s3Bucket)",S3Key="$(ebZipFile)" \
+                  --region us-east-1
+              displayName: "Create Elastic Beanstalk Application Version"
+
+            - script: |
+                aws elasticbeanstalk update-environment \
+                  --environment-name "$(ebEnvName)" \
+                  --version-label "$(Build.BuildId)" \
+                  --region us-east-1
+              displayName: "Deploy to Elastic Beanstalk"

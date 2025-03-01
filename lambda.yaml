@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  This template is used to deploy a simple lambda functions
+
+Parameters:
+  Architectures:
+    Description: set architecture that the function supports
+    Type: String
+    Default: x86_64
+
+Resources:
+  Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Architectures:
+          - !Ref Architectures
+      Description: Lambda function for Data Migration
+      FunctionName: "Testinglambda"
+      Runtime: nodejs22.x
+      Code:
+        S3Bucket: devmds
+        S3Key: my_deployment_package.zip
+      Timeout: 30
+      MemorySize: 256
+      Handler: "index.handler"
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/lambs3"
+      Environment: 
+        Variables: 
+          FILE_CACHE_PATH: "/tmp"
+      TracingConfig: 
+        Mode: PassThrough
+      EphemeralStorage: 
+        Size: 512
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-06a34cfdf6fc5754a
+        SubnetIds:
+          - subnet-0229cd58575eabba3
+          - subnet-00a24e4aba5cb29c4
+
+

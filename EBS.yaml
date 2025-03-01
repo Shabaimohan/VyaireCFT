@@ -1,0 +1,688 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  This template is used to deploy a Elastic Beanstalk
+
+Parameters:
+  ApplicationName:
+    Default: hansu 
+    Description: "AWS Elastic Beanstalk .netcore Application"
+    Type: String
+
+  EnvironmentName:
+    Default: develop 
+    Description: "AWS Elastic Beanstalk .netcore Application Env name"
+    Type: String
+
+  CNAMEPrefix:
+    Default: duraikan
+    Description: "This value as the prefix for the CNAME in your Elastic Beanstalk environment URL"
+    Type: String
+
+
+Resources:
+###################################################
+#               IAM                               #
+###################################################
+  MyIAMRole:                      # lambda role
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "metrics-transform-lambda-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: rkp-lambda-role
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - tag:GetResources
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - apigateway:GET
+                  - aps:ListWorkspaces
+                  - autoscaling:DescribeAutoScalingGroups
+                  - dms:DescribeReplicationInstances
+                  - dms:DescribeReplicationTasks
+                  - ec2:DescribeTransitGatewayAttachments
+                  - ec2:DescribeSpotFleetRequests
+                  - storagegateway:ListGateways
+                  - storagegateway:ListTagsForResource
+                Resource: "*"
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                Resource: "arn:aws:logs:*:*:*"
+
+  ebsmessengerdevec2role:    #EBS to EC2
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ebs-messenger-${EnvironmentName}-ec2-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+
+  ebsmessengerdevservicerole:  #Service update role
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ebs-messenger-${EnvironmentName}-service-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - elasticbeanstalk.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkManagedUpdatesCustomerRolePolicy
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService
+  
+  ebsmessengerdevec2roleProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "ebs-messenger-${EnvironmentName}-ec2-profile"
+      Roles:
+        - !Ref ebsmessengerdevec2role
+
+######################################
+#               EBS                   #
+######################################
+
+  ElasticBeanstalkApplication:
+        Type: "AWS::ElasticBeanstalk::Application"
+        Properties:
+            ApplicationName: !Ref ApplicationName
+          
+  ElasticBeanstalkEnvironment:
+        Type: "AWS::ElasticBeanstalk::Environment"
+        DependsOn: ElasticBeanstalkConfigurationTemplate
+        Properties:
+            EnvironmentName: !Ref EnvironmentName
+            ApplicationName: !Ref ApplicationName
+            CNAMEPrefix: !Ref CNAMEPrefix
+            SolutionStackName: "64bit Windows Server 2022 v2.16.2 running IIS 10.0"
+            OptionSettings:
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "IamInstanceProfile"
+                Value: !Ref ebsmessengerdevec2roleProfile
+# Key name for EC2                                 
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "EC2KeyName"
+                Value: "nv-win"
+            Tier: 
+                Name: "WebServer"
+                Type: "Standard"
+                Version: "1.0"
+  
+  ElasticBeanstalkConfigurationTemplate:
+        Type: "AWS::ElasticBeanstalk::ConfigurationTemplate"
+        DependsOn: ElasticBeanstalkApplication
+        Properties:
+          ApplicationName: !Ref ApplicationName
+          #SolutionStackName: "64bit Windows Server 2022 v2.16.2 running IIS 10.0"
+          PlatformArn: !Sub "arn:aws:elasticbeanstalk:${AWS::Region}::platform/IIS 10.0 running on 64bit Windows Server 2022/2.16.2"
+          #EnvironmentId: !Ref EnvironmentName
+          OptionSettings:
+################################# Autoscaling #####################################
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "Availability Zones"
+                Value: "Any"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "Cooldown"
+                Value: "360"
+              # - 
+              #   ResourceName: "AWSEBAutoScalingGroup"
+              #   Namespace: "aws:autoscaling:asg"
+              #   OptionName: "Custom Availability Zones"
+              #   Value: "us-east-1a,us-east-1b,us-east-1c"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "EnableCapacityRebalancing"
+                Value: "false"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "MaxSize"
+                Value: "1"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "MinSize"
+                Value: "1"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "BlockDeviceMappings"
+              - 
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "DisableIMDSv1"
+                Value: "true"
+# Key name for EC2                                 
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "EC2KeyName"
+                Value: "nv-win"
+
+# InstanceprofileRole                                            
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "IamInstanceProfile"
+                Value: !Ref ebsmessengerdevec2roleProfile
+
+# AMI value for AS                
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "ImageId"
+                Value: "ami-04f77c9cd94746b09"
+              - 
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "InstanceType"
+                Value: "t3.medium"
+              - 
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "LaunchTemplateTagPropagationEnabled"
+                Value: "true"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "MonitoringInterval"
+                Value: "5 minute"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "RootVolumeIOPS"
+                Value: "3000"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "RootVolumeSize"
+                Value: "30"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "RootVolumeThroughput"
+                Value: "125"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "RootVolumeType"
+                Value: "gp3"
+              - 
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "SSHSourceRestriction"
+                Value: "tcp,22,22,0.0.0.0/0"
+# Sequrity group for the autoscaling                
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "SecurityGroups"
+                Value: "sg-06a34cfdf6fc5754a"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "BreachDuration"
+                Value: "5"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "EvaluationPeriods"
+                Value: "1"
+              - 
+                ResourceName: "AWSEBAutoScalingScaleDownPolicy"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "LowerBreachScaleIncrement"
+                Value: "-1"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "LowerThreshold"
+                Value: "2000000"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "MeasureName"
+                Value: "NetworkOut"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "Period"
+                Value: "5"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "Statistic"
+                Value: "Average"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "Unit"
+                Value: "Bytes"
+              - 
+                ResourceName: "AWSEBAutoScalingScaleUpPolicy"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "UpperBreachScaleIncrement"
+                Value: "1"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmHigh"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "UpperThreshold"
+                Value: "6000000"
+              # - 
+              #   ResourceName: "AWSEBAutoScalingGroup"
+              #   Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+              #   OptionName: "MaxBatchSize"
+              # - 
+              #   ResourceName: "AWSEBAutoScalingGroup"
+              #   Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+              #   OptionName: "MinInstancesInService"
+              # - 
+              #   ResourceName: "AWSEBAutoScalingGroup"
+              #   Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+              #   OptionName: "PauseTime"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+                OptionName: "RollingUpdateEnabled"
+                Value: "false"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+                OptionName: "RollingUpdateType"
+                Value: "Time"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+                OptionName: "Timeout"
+                Value: "PT30M"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "AssociatePublicIpAddress"
+                Value: "false"
+
+              
+############################ Cloudformation Template ################
+               
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "AppSource"
+                Value: !Sub "https://s3.dualstack.${AWS::Region}.amazonaws.com/elasticbeanstalk-platform-assets-${AWS::Region}/stalks/eb_windows2022_1.0.806.0_20250118051351/sampleapp/EBSampleApp-Windows.zip"
+              # - 
+              #   Namespace: "aws:cloudformation:template:parameter"
+              #   OptionName: "EnvironmentVariables"
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "InstancePort"
+                Value: "80"
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "InstanceTypeFamily"
+                Value: "t3"
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "LargerInstanceTypeRequired"
+                Value: "true"
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "SystemType"
+                Value: "enhanced"
+# VPC and Subnet configuration                
+              - 
+                Namespace: "aws:ec2:vpc"
+                OptionName: "ELBSubnets"
+                Value: "subnet-00a24e4aba5cb29c4"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "Subnets"
+                Value: "subnet-0229cd58575eabba3"
+              - 
+                ResourceName: "AWSEBSecurityGroup"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "VPCId"
+                Value: "vpc-07a9ee719eb94c978"
+              - 
+                Namespace: "aws:elasticbeanstalk:application"
+                OptionName: "Application Healthcheck URL"
+                Value: "/"                
+
+########################### EC2 ####################################                
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "EnableSpot"
+                Value: "false"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "InstanceTypes"
+                Value: "t3.medium,t3.small"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "SpotAllocationStrategy"
+                Value: "capacity-optimized"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "SpotFleetOnDemandAboveBasePercentage"
+                Value: "0"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "SpotFleetOnDemandBase"
+                Value: "0"
+              # - 
+              #   Namespace: "aws:ec2:instances"
+              #   OptionName: "SpotMaxPrice"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "SupportedArchitectures"
+                Value: "x86_64"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "AssociatePublicIpAddress"
+                Value: "false"
+              - 
+                Namespace: "aws:ec2:vpc"
+                OptionName: "ELBScheme"
+                Value: "public"
+
+
+############################## Cloudwatch ###########################                
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs"
+                OptionName: "DeleteOnTerminate"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs"
+                OptionName: "RetentionInDays"
+                Value: "7"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs"
+                OptionName: "StreamLogs"
+                Value: "true"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs:health"
+                OptionName: "DeleteOnTerminate"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs:health"
+                OptionName: "HealthStreamingEnabled"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs:health"
+                OptionName: "RetentionInDays"
+                Value: "7"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "BatchSize"
+                Value: "100"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "BatchSizeType"
+                Value: "Percentage"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "DeploymentPolicy"
+                Value: "AllAtOnce"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "IgnoreHealthCheck"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "Timeout"
+                Value: "600"
+              - 
+                Namespace: "aws:elasticbeanstalk:container:dotnet:apppool"
+                OptionName: "Enable 32-bit Applications"
+                Value: "False"
+              - 
+                Namespace: "aws:elasticbeanstalk:container:dotnet:apppool"
+                OptionName: "Target Runtime"
+                Value: "4.0"
+              - 
+                Namespace: "aws:elasticbeanstalk:control"
+                OptionName: "DefaultSSHPort"
+                Value: "22"
+              - 
+                Namespace: "aws:elasticbeanstalk:control"
+                OptionName: "LaunchTimeout"
+                Value: "0"
+              - 
+                Namespace: "aws:elasticbeanstalk:control"
+                OptionName: "LaunchType"
+                Value: "Migration"
+              - 
+                Namespace: "aws:elasticbeanstalk:control"
+                OptionName: "RollbackLaunchOnFailure"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:environment"
+                OptionName: "EnvironmentType"
+                Value: "LoadBalanced"
+              # - 
+              #   Namespace: "aws:elasticbeanstalk:environment"
+              #   OptionName: "ExternalExtensionsS3Bucket"
+              # - 
+              #   Namespace: "aws:elasticbeanstalk:environment"
+              #   OptionName: "ExternalExtensionsS3Key"
+              - 
+                Namespace: "aws:elasticbeanstalk:environment"
+                OptionName: "LoadBalancerIsShared"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:environment"
+                OptionName: "LoadBalancerType"
+                Value: "application"
+
+              # - Namespace: "aws:elasticbeanstalk:environment:loadbalancer"
+              #   OptionName: "ELBTargetGroupArn"
+              #   Value: !Ref ALBtargetgroup
+
+# Elastic BeanStalk Servicerole                
+              - 
+                Namespace: "aws:elasticbeanstalk:environment"
+                OptionName: "ServiceRole"
+                Value: !Ref ebsmessengerdevservicerole
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "DeregistrationDelay"
+              #   Value: "20"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "HealthCheckInterval"
+              #   Value: "15"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "HealthCheckPath"
+              #   Value: "/"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "HealthCheckTimeout"
+              #   Value: "5"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "HealthyThresholdCount"
+              #   Value: "3"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "MatcherHTTPCode"
+              #   Value: "200-399"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "Port"
+              #   Value: "80"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "Protocol"
+              #   Value: "HTTP"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "StickinessEnabled"
+              #   Value: "false"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "StickinessLBCookieDuration"
+              #   Value: "86400"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "StickinessType"
+              #   Value: "lb_cookie"
+              # - 
+              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
+              #   Namespace: "aws:elasticbeanstalk:environment:process:default"
+              #   OptionName: "UnhealthyThresholdCount"
+              #   Value: "5"
+              - 
+                Namespace: "aws:elasticbeanstalk:healthreporting:system"
+                OptionName: "ConfigDocument"
+                Value: "{\"Version\":1,\"CloudWatchMetrics\":{\"Instance\":{},\"Environment\":{}},\"Rules\":{\"Environment\":{\"ELB\":{\"ELBRequests4xx\":{\"Enabled\":true}},\"Application\":{\"ApplicationRequests4xx\":{\"Enabled\":true}}}}}"
+              - 
+                Namespace: "aws:elasticbeanstalk:healthreporting:system"
+                OptionName: "EnhancedHealthAuthEnabled"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:healthreporting:system"
+                OptionName: "HealthCheckSuccessThreshold"
+                Value: "Ok"
+              - 
+                Namespace: "aws:elasticbeanstalk:healthreporting:system"
+                OptionName: "SystemType"
+                Value: "enhanced"
+              - 
+                Namespace: "aws:elasticbeanstalk:hostmanager"
+                OptionName: "LogPublicationControl"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions"
+                OptionName: "ManagedActionsEnabled"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions"
+                OptionName: "PreferredStartTime"
+                Value: "WED:17:41"
+# Elastic BeanStalk Servicerole for Updates
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions"
+                OptionName: "ServiceRoleForManagedUpdates"
+                Value: !Ref ebsmessengerdevservicerole
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions:platformupdate"
+                OptionName: "InstanceRefreshEnabled"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions:platformupdate"
+                OptionName: "UpdateLevel"
+                Value: "minor"
+              - 
+                Namespace: "aws:elasticbeanstalk:monitoring"
+                OptionName: "Automatically Terminate Unhealthy Instances"
+                Value: "true"
+              # - 
+              #   Namespace: "aws:elasticbeanstalk:sns:topics"
+              #   OptionName: "Notification Endpoint"
+              #   Value: "smdks28@gmail.com"
+              # - 
+              #   Namespace: "aws:elasticbeanstalk:sns:topics"
+              #   OptionName: "Notification Protocol"
+              #   Value: "email"
+              # - 
+              #   Namespace: "aws:elasticbeanstalk:sns:topics"
+              #   OptionName: "Notification Topic ARN"
+              #   Value:  !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${TopicName}"
+
+              # - 
+              #   Namespace: "aws:elasticbeanstalk:sns:topics"
+              #   OptionName: "Notification Topic Name"
+              # - 
+              #   Namespace: "aws:elasticbeanstalk:trafficsplitting"
+              #   OptionName: "EvaluationTime"
+              # - 
+              #   Namespace: "aws:elasticbeanstalk:trafficsplitting"
+              #   OptionName: "NewVersionPercent"
+              - 
+                Namespace: "aws:elasticbeanstalk:xray"
+                OptionName: "XRayEnabled"
+                Value: "false"
+              # - 
+              #   ResourceName: ":default"
+              #   Namespace: "aws:elbv2:listener:80"
+              #   OptionName: "Rules"
+              #   Value: "default"
+              # - 
+              #   ResourceName: ":default"
+              #   Namespace: "aws:elbv2:listenerrule:default"
+              #   OptionName: "HostHeaders"
+              #   Value: !Sub "vywus-dev1-messenger.${AWS::Region}.elasticbeanstalk.com"
+              # - 
+              #   ResourceName: ":default"
+              #   Namespace: "aws:elbv2:listenerrule:default"
+              #   OptionName: "PathPatterns"
+              #   Value: "/*"
+              # - 
+              #   ResourceName: ":default"
+              #   Namespace: "aws:elbv2:listenerrule:default"
+              #   OptionName: "Priority"
+              #   Value: "1"
+              # - 
+              #   ResourceName: ":default"
+              #   Namespace: "aws:elbv2:listenerrule:default"
+              #   OptionName: "Process"
+              #   Value: "default"
+              # - 
+              #   Namespace: "aws:elbv2:loadbalancer"
+              #   OptionName: "SecurityGroups"
+              #   Value: !Ref DBSecuritygroup
+              # - 
+              #   Namespace: "aws:elbv2:loadbalancer"
+              #   OptionName: "SharedLoadBalancer"
+              #   Value: !Sub "arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:${ApplicationLB}"
+              - 
+                Namespace: "aws:rds:dbinstance"
+                OptionName: "HasCoupledDatabase"
+                Value: "false"

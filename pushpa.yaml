@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "CloudFormation template with a Lambda-backed custom resource to create an SNS Platform Application."
+
+Resources:
+  # IAM Role for Lambda
+  SNSPlatformApplicationLambdaRole1:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - lambda.amazonaws.com
+            Action: 
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: SNSPlatformApplicationPolicy1
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:CreatePlatformApplication
+                  - sns:DeletePlatformApplication
+                  - sns:*
+                  - secretsmanager:*
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # Lambda Function to Create SNS Platform Application
+  SNSPlatformApplicationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SNSPlatformApplicationnew1
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt SNSPlatformApplicationLambdaRole1.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+
+          def lambda_handler(event, context):
+              sns_client = boto3.client('sns')
+              sm_client = boto3.client('secretsmanager')
+
+              request_type = event['RequestType']
+              props = event['ResourceProperties']
+
+              platform = props['Platform']
+              name = props['ApplicationName']
+              
+              # Retrieve and parse secret from Secrets Manager
+              secret_arn = props['PlatformCredential']
+              secret_response = sm_client.get_secret_value(SecretId=secret_arn)
+              
+              # credential_json = json.loads(secret_response['SecretString'])  # Parse JSON
+              # credential = json.dumps(credential_json)  # Ensure it's a valid JSON string
+
+              try:
+                  if request_type == "Create":
+                      response = sns_client.create_platform_application(
+                          Name=name,
+                          Platform=platform,
+                          Attributes={
+                              'PlatformCredential': '-----BEGIN PRIVATE KEY-----\n9w0BAQEFAASCBKcwggSjAgEAAoIBAQDlnTMeiRW4YuM6\njsIfl8kRBbnQRmqa\n6i/KEOuDeHKibSajNU0vsT9h2iVPIofOFR2yWJ6Umi3LyDRyYgceUAJz/0Hqj4lp\nIKEeATpOCEEhF7KF8zJIhtlfoW9z/bC0/HRzlJ95dczuR+7g0QXZ6xkP/ljh93P8\nSxdi8h2QQItmM5MarkscXRFAPLT8pWFtxGk1rKp8SR9a8fMqBVCgUh2Eaj2moP4C\nSSvur36wAmr8+tnuhfwajNgV8tcF956GAYCl5R1BDOzz3fSl28iX35yNet4ygWNd\nvfnccG7PAgMBAAECggEAL66U4obyMT+r00m6/f3q3hvEgD0selXjFeUhP1sgx0cT\nNArM+sZAJioh3Tt0T3CZErF5CiVnwFYXJkNymCIqXjthhtRm3Sag+EH1GRNtgwD3\nNbcR2yrnB5H656IULhqoQsW3tLHx1M1o6iFiA/KaUoEJUV9z7bginYgPVPoXxHyq\nARgEBVwCFq9Gr59rnVTYG32oJcnontj3Q5qNP1PjX+Z/uXwmBQMYjoKBjSv6sAUY\nw+1jDyxG3HnA6/hsIocqBnBGFVTq+oMYUB7R/vSyDz0mGpbMENtjdZwKL0nezrT+\n7IAozH2f0vkQJ4fxthvx+kfiG6QxQZghelbLujJUEQKBgQDtZC7zeAxe6+Nff2sD\nReQmoHci4JYMSxJg3xpXMR/dz8YYbm6HVwEXW6e4kzDZMNXcu9yBONpmpvpwaKQ0\nlqGW5tpV7eGuCUIgrEIgvLFjgaq5SfnN4w7/XkS46TjdijDggwVpAmaK8bnAm+Bw\nXF3rW1dl7K+j78NG05gJJOI7UQKBgQD3nPJji/BlmLED/kpJ9A8geKtzH/Qgvztp\niXw9WhBFwaDNFrcWq96ufRMPAHENPUAv7OutjU6Z25jm1l0hHWohIfagiSGKQU0+\nF7cxAiUP7JsRBpvVt6y9y8M/we3vupaCiu0FA3dq60ixhP4Hi4Nfv4LuBQAkpGYd\neKinBwdAHwKBgEUZGCF+G/u1JaWybO+y9EnaA1N/k61YXK0dw4kFn4Ts6XhLDJkQ\nVhz6bMNo9JsDf/yUIgbrCYc/qz3093bnMXm/EGZaq4oA3+KqwUTOJ8QTBiKQycmI\nAeGLCu3X1NmHU9rFyFlcfYSL/8l0lcue1yeemr3sOuO48lo3VNW0irVBAoGBAJc2\nOzfbf6Urh/5eTlO3PX2g82LMwrM01T1v/nUhCQrwYhicpJatwsFgFEF3DZL+MrKR\nxqMnxjZjSo69ngXZBrTRHuGOnPLnShp/NRoyqxt8bH4LQSNUlaMaSlQnQ/zAP6Xc\n3T3Qjh63LJ9sDg3hfwr70yMz3pCB7PJWevf1bNIVAoGAQzWS3WhGysZgXGZtsWoF\nO8UGJenic8rzZb8F7dDHZ+kNznCxEUalKU99QX+WH4bZuDpLTy5vUzrhCX1CSDRs\nTLJ07zk8QAEbXuoyFx4JaXD/xwwx4ng4aU4ximxA6Y9aT9+/hyzNtkI5ucKR8r/a\nArWElgZLY/gY210gx3THbQE=\n-----END PRIVATE KEY-----\n',
+                              'PlatformPrincipal' : 'firebase-adminsdk-cqsfw@qamess-dev.iam.gserviceaccount.com'
+                          }
+                      )
+                      app_arn = response['PlatformApplicationArn']
+                      response_data = {'PlatformApplicationArn': app_arn}
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+
+                  elif request_type == "Delete":
+                      if 'PhysicalResourceId' in event:
+                          sns_client.delete_platform_application(
+                              PlatformApplicationArn=event['PhysicalResourceId']
+                          )
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+
+                  else:
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {})
+
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {})
+
+  # Custom Resource to Trigger Lambda
+  SNSPlatformApplicationsnew:
+    Type: Custom::SNSPlatformApplication
+    Properties:
+      ServiceToken: !GetAtt SNSPlatformApplicationLambda.Arn
+      Platform: "GCM"  # Change to "APNS" for iOS
+      ApplicationName: "MySNSPlatformApp"
+      # PlatformCredential: arn:aws:secretsmanager:us-east-1:590183885892:secret:redgcmfire-GznFEJ
+
+Outputs:
+  SNSPlatformApplicationArn:
+    Description: "ARN of the SNS Platform Application"
+    Value: !GetAtt SNSPlatformApplicationsnew.PlatformApplicationArn

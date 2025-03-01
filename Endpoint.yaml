@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  This template is used to deploy a simple vpc
+Parameters:
+  GatewayEndpoindResource:
+    Description: Please enter the resource ARN
+    Type: String
+
+Resources:
+  S3GatewayEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: 'Gateway'
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - 's3:GetObject'
+            Resource:
+              - !Ref GatewayEndpoindResource #change the resource accordingly
+      RouteTableIds:
+        - !Ref PvtRouteTable1
+        - !Ref RouteTable1
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["sample-",!Ref "EnvironmentName", "-endpoint"]]
+  

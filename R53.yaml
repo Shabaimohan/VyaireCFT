@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: |
+  This template is used to deploy a R53
+
+
+Parameters:
+  DomainName:
+    #Default: 123.com
+    Description: Enter your Domain name
+    Type: String
+
+Resources:
+  Hostedzone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Ref DomainName
+      HostedZoneTags:
+        - Key: Name
+          Value: sample public HZ
+
+  MyRecordSet:
+      Type: AWS::Route53::RecordSet
+      Properties:
+        HostedZoneId: !Ref Hostedzone
+        Name: api.kavethai.com.  # The fully qualified domain name (FQDN) you want to create
+        Type: A
+        TTL: '300'
+        ResourceRecords:
+          - "3.34.67.89"  # Replace with your target IP address
+
+Outputs:
+  HostedZoneNameServers:
+    Description: "The NS records for the hosted zone. Use these to update your domain registrar."
+    Value: !Join [ ", ", !GetAtt Hostedzone.NameServers ]
+
