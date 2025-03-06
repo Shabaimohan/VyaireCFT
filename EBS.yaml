@@ -107,6 +107,54 @@ Resources:
       InstanceProfileName: !Sub "ebs-messenger-${EnvironmentName}-ec2-profile"
       Roles:
         - !Ref ebsmessengerdevec2role
+###########################################
+#          Load Balancer                  #                                        
+###########################################
+  ALBtargetgroup:                                     ######### Target group ###########
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: vpc-07a9ee719eb94c978
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: "/"
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      IpAddressType: ipv4
+      Matcher: 
+        HttpCode: "200-399"
+      Name: webtargetgroup
+      Port: 80
+      Protocol: HTTP
+      ProtocolVersion: HTTP1
+      TargetType: instance
+      # Type: "application" 
+      TargetGroupAttributes:
+        - Key: "stickiness.enabled"
+          Value: "false" 
+  ApplicationLB:                                       ###### Application load Balance ######
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: "application"
+      IpAddressType: ipv4
+      Name: !Sub "rkp-${EnvironmentName}-alb"
+      Scheme: "internet-facing"
+      SecurityGroups:
+        - sg-06a34cfdf6fc5754a
+      Subnets:
+        - subnet-00a24e4aba5cb29c4
+        - subnet-04163ea38bec847d8
+  TGListener:                                        ############# Listener #############
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBtargetgroup
+      LoadBalancerArn: !Ref ApplicationLB
+      Port: '80'
+      Protocol: HTTP
 
 ######################################
 #               EBS                   #
@@ -137,10 +185,30 @@ Resources:
                 Namespace: "aws:autoscaling:launchconfiguration"
                 OptionName: "EC2KeyName"
                 Value: "nv-win"
+              - 
+                Namespace: "aws:elbv2:loadbalancer"
+                OptionName: "SharedLoadBalancer"
+                Value: !Ref ApplicationLB
+              # VPC and Subnet configuration                
+              - 
+                Namespace: "aws:ec2:vpc"
+                OptionName: "ELBSubnets"
+                Value: "subnet-00a24e4aba5cb29c4"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "Subnets"
+                Value: "subnet-0229cd58575eabba3"
+              - 
+                ResourceName: "AWSEBSecurityGroup"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "VPCId"
+                Value: "vpc-07a9ee719eb94c978"
             Tier: 
                 Name: "WebServer"
                 Type: "Standard"
                 Version: "1.0"
+
   
   ElasticBeanstalkConfigurationTemplate:
         Type: "AWS::ElasticBeanstalk::ConfigurationTemplate"
@@ -678,10 +746,7 @@ Resources:
               #   Namespace: "aws:elbv2:loadbalancer"
               #   OptionName: "SecurityGroups"
               #   Value: !Ref DBSecuritygroup
-              # - 
-              #   Namespace: "aws:elbv2:loadbalancer"
-              #   OptionName: "SharedLoadBalancer"
-              #   Value: !Sub "arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:${ApplicationLB}"
+
               - 
                 Namespace: "aws:rds:dbinstance"
                 OptionName: "HasCoupledDatabase"

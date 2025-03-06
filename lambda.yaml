@@ -10,17 +10,19 @@ Parameters:
 
 Resources:
   Lambda:
-    Type: AWS::Lambda::Function
+    Type: AWS::Serverless::Function
     Properties:
       Architectures:
           - !Ref Architectures
       Description: Lambda function for Data Migration
       FunctionName: "Testinglambda"
-      Runtime: nodejs22.x
-      Code:
-        S3Bucket: devmds
-        S3Key: my_deployment_package.zip
-      Timeout: 30
+      Runtime: nodejs18.x 
+      CodeUri: ./
+      # Code:
+      #   S3Bucket: devmds
+      #   S3Key: my_deployment_package.zip
+      # Timeout: 60
+      
       MemorySize: 256
       Handler: "index.handler"
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/lambs3"
@@ -38,4 +40,22 @@ Resources:
           - subnet-0229cd58575eabba3
           - subnet-00a24e4aba5cb29c4
 
+  LambdaUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      AuthType: NONE  # Change to AWS_IAM if you want to restrict access
+      TargetFunctionArn: !GetAtt Lambda.Arn          
+      InvokeMode: RESPONSE_STREAM
 
+  LambdaFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref Lambda
+      Principal: "*"
+      FunctionUrlAuthType: NONE  # Change this if restricting access
+
+Outputs:
+  LambdaFunctionUrl:
+    Description: "Lambda Function URL"
+    Value: !GetAtt LambdaUrl.FunctionUrl

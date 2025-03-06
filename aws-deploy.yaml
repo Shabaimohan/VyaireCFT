@@ -2,10 +2,10 @@
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: >
-  This template is used to deploy a simple vpc
+  This template is used to deploy base infra for the rkp environment.
 Parameters:
   Region:
-    Default: us-east-1
+    Default: us-east-2
     Description: An environment name that is prefixed to resource names
     Type: String
 
@@ -24,12 +24,12 @@ Parameters:
     Type: String
     Default: 10.0.1.0/24
 
-  PubSubnet22bCIDR:
+  mgmtSubnet22bCIDR:
     Description: Please enter the IP range (CIDR notation) for this Subnet
     Type: String
     Default: 10.0.2.0/24
 
-  PubSubnet32bCIDR:
+  webSubnet32bCIDR:
     Description: Please enter the IP range (CIDR notation) for this subnet
     Type: String
     Default: 10.0.3.0/24
@@ -39,17 +39,17 @@ Parameters:
     Type: String
     Default: 10.0.4.0/24
 
-  PubSubnet22aCIDR:
+  mgmtSubnet22aCIDR:
     Description: Please enter the IP range (CIDR notation) for this subnet
     Type: String
     Default: 10.0.5.0/24
 
-  PubSubnet32aCIDR:
+  webSubnet32aCIDR:
     Description: Please enter the IP range (CIDR notation) for this subnet
     Type: String
     Default: 10.0.6.0/24
 
-  DBSubnet12bCIDR:
+  DBSubnet22bCIDR:
     Description: Please enter the IP range (CIDR notation) for this Subnet
     Type: String
     Default: 10.0.7.0/24
@@ -84,19 +84,44 @@ Parameters:
     Type: String
     Default: 10.0.13.0/24
 
-  TopicName:
-    Default: samplefortest
-    Description: Enter the topic TopicName
+  DBInstanceClass:
+    Default: db.t3.medium
+    Description: DB instance type
     Type: String
-
-  ApplicationName: 
-    Default: testing
-    Description: "AWS Elastic Beanstalk .netcore Application"
+    ConstraintDescription: Must select a valid DB instance type.
+  
+  Engine:
+    Default: postgres
+    Description: DB Engine Type
     Type: String
+    ConstraintDescription: Must select a valid DB Engine.
+  
+  EngineVersion:
+    Default: 16.3
+    Description: DB Engine 
+    Type: String
+    ConstraintDescription: Must select a valid DB Engine version.    
 
-  CNAMEPrefix:
-    Default: duraikan
-    Description: "This value as the prefix for the CNAME in your Elastic Beanstalk environment URL"
+  DBAllocatedStorage:
+    Default: 50
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '20'
+    MaxValue: '65536'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+
+  LicenseModel:
+    Default: postgresql-license
+    Description: DB License Model Type
     Type: String
 
 Resources:
@@ -198,7 +223,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-VPC"]]
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName"]]
 #################  Public Subnets    ########################
   PubSubnet12a:
     Type: AWS::EC2::Subnet
@@ -216,7 +241,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !Ref PubSubnet22aCIDR
+      CidrBlock: !Ref mgmtSubnet22aCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -227,7 +252,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !Ref PubSubnet32aCIDR
+      CidrBlock: !Ref webSubnet32aCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -249,7 +274,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !Ref PubSubnet22bCIDR
+      CidrBlock: !Ref mgmtSubnet22bCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -260,7 +285,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !Ref PubSubnet32bCIDR
+      CidrBlock: !Ref webSubnet32bCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -401,7 +426,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !Ref DBSubnet12bCIDR
+      CidrBlock: !Ref DBSubnet22bCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -518,9 +543,10 @@ Resources:
 #########################################
 #          Security Group               #
 #########################################
-  EBSSecuritygroup:
+  APPSecuritygroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
+      SecurityGroupName: !Sub zoll-messenger-${EnvironmentName}-app
       GroupDescription: SG to test RDS
       VpcId: !Ref VPC
       SecurityGroupIngress:
@@ -531,54 +557,52 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupId: !Ref WebmessengerSecuritygroup
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupId: !Ref WebmessengerSecuritygroup
+        - IpProtocol: "-1"
+          SourceSecurityGroupId: !Ref ConnectionsSecurityGroup
+        - IpProtocol: "-1"
+          CidrIp: 10.160.80.0/22         
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: EBS-Securitygroup
+          Value: !Sub ebs-messenger-${EnvironmentName}-app
 
   DBSecuritygroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
+      SecurityGroupName: !Sub zoll-messenger-${EnvironmentName}-rds
       GroupDescription: SG to test RDS
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ConnectionsSecurityGroup  # Allow from WebmessengerSecuritygroup
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
-          CidrIp: 0.0.0.0/0
+          SourceSecurityGroupId: !Ref APPSecuritygroup  # Allow from APPSecuritygroup
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 98.212.107.238/32    
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: DB-Securitygroup
+          Value: !Sub rds-sg-${EnvironmentName}-messenger
 
-  MessengerSecuritygroup:
+  WebmessengerSecuritygroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
+      SecurityGroupName: !Sub ebs-messenger-${EnvironmentName}-web
       GroupDescription: SG to test RDS
       VpcId: !Ref VPC
       SecurityGroupIngress:
@@ -593,21 +617,52 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0  
-        - IpProtocol: tcp
-          FromPort: 5432
-          ToPort: 5432
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          CidrIp: 0.0.0.0/0  
+          CidrIp: 0.0.0.0/0   
       SecurityGroupEgress:
         - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: Messenger-securitygroup
+          Value: !Sub ebs-messenger-${EnvironmentName}-web
+
+  ConnectionsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      Name: !Sub ebs-messenger-${EnvironmentName}-connections
+      GroupDescription: Allow all traffic from specified sources
+      VpcId: !Ref VPC  # Replace with your VPC reference
+      SecurityGroupIngress:
+        - IpProtocol: "-1"
+          CidrIp: 4.242.80.211/32
+          Description: Kannan Zoll 365
+        - IpProtocol: "-1"
+          CidrIp: 10.160.81.0/26
+          Description: Internal Network
+        - IpProtocol: "-1"
+          CidrIp: 10.150.32.0/20
+          Description: Internal Network
+        - IpProtocol: "-1"
+          CidrIp: 198.99.238.0/24
+          Description: From Zoll VPN
+        - IpProtocol: "-1"
+          CidrIp: 10.150.16.0/24
+          Description: Internal Network
+        - IpProtocol: "-1"
+          CidrIp: !Ref VpcCIDR
+          Description: From VPC
+        - IpProtocol: "-1"
+          CidrIp: 10.150.35.10/32
+          Description: Internal Host
+        - IpProtocol: "-1"
+          CidrIp: 52.163.191.211/32
+          Description: From Praba Zoll W365
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub zoll-messenger-${EnvironmentName}-connections
 
 ##########################################
 #                SNS                     #
@@ -615,12 +670,12 @@ Resources:
   SNSTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: !Ref TopicName
+      TopicName: !Sub "ElasticBeanstalkNotifications-Environment-Messenger-${EnvironmentName}"
   SNSSubscription:
         Type: "AWS::SNS::Subscription"
         Properties:
             TopicArn: !Ref SNSTopic
-            Endpoint: "smdks28@gmail.com"    # Chnage the mailid accordingly
+            Endpoint: "jacob.belica@zoll.com"    # Chnage the mailid accordingly
             Protocol: "email"
             Region: !Ref AWS::Region
 
@@ -656,10 +711,10 @@ Resources:
     Properties:
       Type: "application"
       IpAddressType: ipv4
-      Name: !Sub "rkp-${EnvironmentName}-alb"
+      Name: !Sub "ebs-messenger-${EnvironmentName}-lb"
       Scheme: "internet-facing"
       SecurityGroups:
-        - !Ref EBSSecuritygroup
+        - !Ref WebmessengerSecuritygroup
       Subnets:
         - !Ref PubSubnet12a
         - !Ref PubSubnet12b
@@ -672,58 +727,6 @@ Resources:
       LoadBalancerArn: !Ref ApplicationLB
       Port: '80'
       Protocol: HTTP
-  # TGListener2:
-  #   Type: 'AWS::ElasticLoadBalancingV2::Listener'
-  #   Properties:
-  #     DefaultActions:
-  #       - Type: redirect
-  #         RedirectConfig:
-  #           Protocol: HTTP
-  #           Port: '80'
-  #           StatusCode: HTTP_301
-  #     LoadBalancerArn: !Ref ApplicationLB
-  #     Port: '81'
-  #     Protocol: HTTP
-
-  # ALBListenerHTTPS:
-  #   Type: AWS::ElasticLoadBalancingV2::Listener
-  #   Properties:
-  #     LoadBalancerArn: !Ref  ApplicationLB          
-  #     Port: 443
-  #     Protocol: HTTPS
-  #     SslPolicy: "ELBSecurityPolicy-2016-08"  # TLS Security Policy
-  #     Certificates:
-  #       - CertificateArn: !Ref                    # ARN of the existing ACM 
-  #     DefaultActions:
-  #       - Type: forward
-  #         TargetGroupArn: !Ref ALBtargetgroup
-  # TGListenerRule:                                       
-  #   Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'         ###### Listener Rule #########
-  #   Properties:
-  #     Actions:
-  #       - Type: forward
-  #         TargetGroupArn: !Ref ALBtargetgroup
-  #     Conditions:
-  #       - Field: http-header
-  #         HttpHeaderConfig:
-  #           HttpHeaderName: Referer
-  #           Values:
-  #             - 'https://kavethai.cloud/'                   # Change Doamain accordingly
-  #     ListenerArn: !Ref TGListener
-  #     Priority: 1  
-  # TGListenerRule1:                                       
-  #   Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'         ###### Listener Rule #########
-  #   Properties:
-  #     Actions:
-  #       - Type: forward
-  #         TargetGroupArn: !Ref ALBtargetgroup
-  #     Conditions:
-  #       - Field: "host-header"
-  #         HostHeaderConfig:
-  #           Values:
-  #             - "exam123.com"                   # Change Doamain accordingly
-  #     ListenerArn: !Ref TGListener
-  #     Priority: 2
 
 #######################################
 #       Elastic BeanStalk             #
@@ -735,7 +738,7 @@ Resources:
           - ebsmessengerdevec2role
           - ebsmessengerdevservicerole
         Properties:
-            ApplicationName: !Ref ApplicationName
+            ApplicationName: !Sub "zoll-${EnvironmentName}-messenger"
           
   ElasticBeanstalkEnvironment:
         Type: "AWS::ElasticBeanstalk::Environment"
@@ -745,9 +748,9 @@ Resources:
           - ElasticBeanstalkConfigurationTemplate
         Properties:
             EnvironmentName: !Sub "Messenger-${EnvironmentName}"
-            ApplicationName: !Ref ApplicationName
-            CNAMEPrefix: !Ref CNAMEPrefix
-            SolutionStackName: "64bit Windows Server 2022 v2.16.2 running IIS 10.0"
+            ApplicationName: !Sub "zoll-${EnvironmentName}-messenger"
+            CNAMEPrefix: !Sub "zoll-${EnvironmentName}-messenger"
+            SolutionStackName: "64bit Windows Server 2022 v2.17.0 running IIS 10.0"
             OptionSettings:
               - 
                 ResourceName: "AWSEBEC2LaunchTemplate"
@@ -759,7 +762,7 @@ Resources:
                 ResourceName: "AWSEBEC2LaunchTemplate"
                 Namespace: "aws:autoscaling:launchconfiguration"
                 OptionName: "EC2KeyName"
-                Value: "nv-win"
+                Value: "Messenger-Dev-KP"
 # VPC and Subnet configuration                
               - 
                 ResourceName: "AWSEBEC2LaunchTemplate"
@@ -802,7 +805,7 @@ Resources:
               - 
                 Namespace: "aws:elbv2:loadbalancer"
                 OptionName: "SecurityGroups"
-                Value: !Ref EBSSecuritygroup
+                Value: !Ref APPSecuritygroup
               - 
                 Namespace: "aws:elasticbeanstalk:environment"
                 OptionName: "LoadBalancerIsShared"
@@ -816,97 +819,6 @@ Resources:
                 OptionName: "EnvironmentType"
                 Value: "LoadBalanced"
                 
-# Use an existing Target Group
-
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "DeregistrationDelay"
-              #   Value: "20"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "HealthCheckInterval"
-              #   Value: "15"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "HealthCheckPath"
-              #   Value: "/"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "HealthCheckTimeout"
-              #   Value: "5"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "HealthyThresholdCount"
-              #   Value: "3"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "MatcherHTTPCode"
-              #   Value: "200-399"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "Port"
-              #   Value: "80"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "Protocol"
-              #   Value: "HTTP"
-
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "StickinessEnabled"
-              #   Value: "false"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "StickinessLBCookieDuration"
-              #   Value: "86400"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "StickinessType"
-              #   Value: "lb_cookie"
-              # - 
-              #   ResourceName: "AWSEBV2LoadBalancerTargetGroup"
-              #   Namespace: "aws:elasticbeanstalk:environment:process:webtargetgroup"
-              #   OptionName: "UnhealthyThresholdCount"
-              #   Value: "5"
-              # - 
-              #   ResourceName: ":webtargetgroup"
-              #   Namespace: "aws:elbv2:listenerrule:webtargetgroup"
-              #   OptionName: "HostHeaders"
-              #   Value: !Ref ApplicationName
-
-              # - 
-              #   ResourceName: ":webtargetgroup"
-              #   Namespace: "aws:elbv2:listenerrule:webtargetgroup"
-              #   OptionName: "PathPatterns"
-              #   Value: "/*"
-
-              # - 
-              #   ResourceName: ":webtargetgroup"
-              #   Namespace: "aws:elbv2:listenerrule:webtargetgroup"
-              #   OptionName: "Priority"
-              #   Value: "1"
-
-              # - 
-              #   ResourceName: ":webtargetgroup"
-              #   Namespace: "aws:elbv2:listenerrule:webtargetgroup"
-              #   OptionName: "Process"
-              #   Value: "webtargetgroup"
-              # - 
-              #   ResourceName: ":webtargetgroup"
-              #   Namespace: "aws:elbv2:listener:80"
-              #   OptionName: "Rules"
-              #   Value: "webtargetgroup"
 
 ######################### SNS ######################################
               - 
@@ -916,7 +828,7 @@ Resources:
               - 
                 Namespace: "aws:elasticbeanstalk:sns:topics"
                 OptionName: "Notification Endpoint"
-                Value: smdks28@gmail.com
+                Value: jacob.belica@zoll.com
               - 
                 Namespace: "aws:elasticbeanstalk:sns:topics"
                 OptionName: "Notification Protocol"
@@ -951,7 +863,7 @@ Resources:
                 ResourceName: "AWSEBEC2LaunchTemplate"
                 Namespace: "aws:autoscaling:launchconfiguration"
                 OptionName: "ImageId"
-                Value: "ami-0d55d7af15ad26574"
+                Value: "ami-09c3f7b994dd25411"
               - 
                 Namespace: "aws:autoscaling:launchconfiguration"
                 OptionName: "InstanceType"
@@ -994,7 +906,7 @@ Resources:
                 ResourceName: "AWSEBEC2LaunchTemplate"
                 Namespace: "aws:autoscaling:launchconfiguration"
                 OptionName: "SecurityGroups"
-                Value: !Ref EBSSecuritygroup
+                Value: !Ref APPSecuritygroup
             Tier: 
                 Name: "WebServer"
                 Type: "Standard"
@@ -1007,8 +919,8 @@ Resources:
           - ebsmessengerdevservicerole
           - ElasticBeanstalkApplication
         Properties:
-          ApplicationName: !Ref ApplicationName
-          PlatformArn: !Sub "arn:aws:elasticbeanstalk:${AWS::Region}::platform/IIS 10.0 running on 64bit Windows Server 2022/2.16.2"
+          ApplicationName: !Sub "zoll-${EnvironmentName}-messenger"
+          PlatformArn: !Sub "arn:aws:elasticbeanstalk:${AWS::Region}::platform/IIS 10.0 running on 64bit Windows Server 2022/2.17.0"
           OptionSettings:
 ################################# Autoscaling #####################################
               - 
@@ -1288,21 +1200,8 @@ Resources:
 #################################
 #             Endpoint          #
 #################################
-
-  S3Parameter:                      # Store EB S3 Bucket name in parameterstore for Endpoint
-    Type: AWS::SSM::Parameter
-    DependsOn: ElasticBeanstalkEnvironment
-    Properties:
-      Name: elasticbeanstalkdefault_s3_bucket
-      Type: String
-      Value: !Sub "elasticbeanstalk-${AWS::Region}-${AWS::AccountId}"
-      Description: SSM Parameter for running date command.
-      Tags:
-        Environment: DEV
-
   S3GatewayEndpoint:
     Type: 'AWS::EC2::VPCEndpoint'
-    DependsOn: S3Parameter
     Properties:
       VpcEndpointType: 'Gateway'
       VpcId: !Ref VPC
@@ -1312,12 +1211,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal: '*'
-            Action:
-              - 's3:GetObject'
-            Resource:
-              # - !Join [":", ["arn", "aws", "ssm", !Ref AWS::Region, !Ref AWS::AccountId, !Join ["", ["parameter/", !Ref BasicParameter]]]]
-              # - !Join [":", ["arn", "aws", "ssm", !Ref AWS::Region, !Ref AWS::AccountId, !Join ["", ["parameter/", !Ref BasicParameter, "/*"]]]]
-              - !Ref S3Parameter
+            Action: '*'
+            Resource: '*'
  #change the resource accordingly
       RouteTableIds:
         - !Ref PvtRouteTable1
@@ -1325,5 +1220,48 @@ Resources:
       Tags:
         - Key: Name
           Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-endpoint"]]
+
+######################################
+#           RDS                      #
+######################################
+  DBSubnetGroup:                    ########## DB Subnet Group #########
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subnets for RDS database"
+      SubnetIds:
+        - !Ref DBSubnet12b
+        - !Ref DBSubnet12a
+        - !Ref DBSubnet12c
+      Tags:
+        - Key: Name
+          Value: !Sub "rds-postgres-${EnvironmentName}-dbgroup"
+######################## RDS ######################################
+  RDSDBInstance:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      DBInstanceIdentifier: !Sub zoll-${EnvironmentName}-messenger-pgsql
+      AllocatedStorage: !Ref DBAllocatedStorage
+      BackupRetentionPeriod: 7
+      DBInstanceClass: !Ref DBInstanceClass
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Engine: !Ref Engine
+      EngineVersion: !Ref EngineVersion
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: "{{resolve:ssm-secure:/vywus/msgr/master/QA/DBPasswordPostgres:1}}"
+      StorageType: gp3
+      AutoMinorVersionUpgrade: false
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      LicenseModel: !Ref LicenseModel
+      MultiAZ: false
+      EnablePerformanceInsights: true
+      PerformanceInsightsRetentionPeriod: 7
+      EngineLifecycleSupport: open-source-rds-extended-support-disabled
+      StorageEncrypted: true
+      MaxAllocatedStorage: 50
+      VPCSecurityGroups:
+        - !Ref DBSecuritygroup
+      Tags:
+        - Key: Name
+          Value: !Sub "rkp-${EnvironmentName}-rds"
 
 

@@ -28,7 +28,7 @@ Parameters:
     ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
 
   DBInstanceClass:
-    #Default: db.m5.large
+    Default: db.t3.medium
     Description: DB instance type
     Type: String
     ConstraintDescription: Must select a valid DB instance type.
@@ -40,14 +40,14 @@ Parameters:
     ConstraintDescription: Must select a valid DB Engine.
   
   EngineVersion:
-    #Default: 
+    Default: 16.
     Description: DB Engine 
     Type: String
     ConstraintDescription: Must select a valid DB Engine version.
     
 
   DBAllocatedStorage:
-    #Default: '50'
+    Default: 50
     Description: The size of the database (GiB)
     Type: Number
     MinValue: '20'
