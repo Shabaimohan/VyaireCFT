@@ -1,0 +1,18 @@
+[
+{
+    "ParameterKey": "TopicName",
+    "ParameterValue": "sample-for-testing"
+},
+
+{
+    "ParameterKey": "Endpoint",
+    "ParameterValue": "abc@gmail.com"
+},
+{
+    "ParameterKey": "Endpoint2",
+    "ParameterValue": "def@gmail.com"
+}
+
+]
+
+

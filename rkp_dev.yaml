@@ -1,0 +1,951 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  TargetRuntime:
+    NoEcho: 'true'
+    Type: String
+    AllowedValues:
+      - '4.0'
+      - '2.0'
+    Description: Target .NET Runtime
+    Default: '4.0'
+  LogPublicationControl:
+    NoEcho: 'true'
+    Type: String
+    Description: If true customer service logs will be published to S3.
+    AllowedValues:
+      - 'true'
+      - 'false'
+    ConstraintDescription: must be Boolean.
+    Default: 'false'
+  InstanceTypeFamily:
+    NoEcho: 'true'
+    Type: String
+    Description: WebServer EC2 instance type family
+  XRayEnabled:
+    NoEcho: 'true'
+    Type: String
+    Description: Enables AWS X-Ray for your environment.
+    Default: 'false'
+  InstancePort:
+    NoEcho: 'true'
+    Type: String
+    Description: Listen Port
+    Default: '80'
+  AWSEBEnvironmentId:
+    NoEcho: 'true'
+    Type: String
+  SystemType:
+    NoEcho: 'true'
+    Type: String
+    Description: Type of health reporting for Beanstalk environment
+    Default: enhanced
+  LargerInstanceTypeRequired:
+    NoEcho: 'true'
+    Type: String
+    Description: If true the default instance type size will be increased.
+    AllowedValues:
+      - 'true'
+      - 'false'
+    ConstraintDescription: must be Boolean.
+    Default: 'true'
+  AWSEBEnvironmentName:
+    NoEcho: 'true'
+    Type: String
+  AWSEBReferrerId:
+    NoEcho: 'true'
+    Type: String
+    Default: ''
+  AppSource:
+    NoEcho: 'true'
+    Type: String
+    Description: Application Source
+    Default: https://s3.dualstack.us-east-2.amazonaws.com/elasticbeanstalk-platform-assets-us-east-2/stalks/eb_windows2022_1.0.806.0_20250118051351/sampleapp/EBSampleApp-Windows.zip
+  EnvironmentVariables:
+    NoEcho: 'true'
+    Type: CommaDelimitedList
+    Description: Program environment variables.
+    Default: ''
+  AWSEBAgentId:
+    NoEcho: 'true'
+    Type: String
+    Default: ''
+  InstanceType:
+    NoEcho: 'true'
+    Type: String
+    Description: WebServer EC2 instance type
+    ConstraintDescription: must be a valid EC2 instance type.
+  AWSEBEnvironmentBucket:
+    NoEcho: 'true'
+    Type: String
+  Allow32BitApplications:
+    NoEcho: 'true'
+    Type: String
+    AllowedValues:
+      - 'True'
+      - 'False'
+    Description: Enable 32-bit Applications
+    Default: 'False'
+Description: 'AWS Elastic Beanstalk environment (Name: ''Messenger-Dev''  Id: ''e-wet5w5vbfu'')'
+Mappings:
+  AWSEBAWSRegionArch2AMIBase:
+    us-east-2:
+      pv: ''
+      graphics: ''
+      gpu: ''
+      hvm: ami-03d1e139780958698
+  AWSEBAWSRegionArch2AMI:
+    us-east-2:
+      pv: ''
+      graphics: ''
+      gpu: ''
+      hvm: ami-09c3f7b994dd25411
+  AWSEBOptions:
+    options:
+      OperatingSystem: Windows
+      OptionDefinitionOverrideEnabled: true
+      DefaultsScript: c:/Program Files/Amazon/ElasticBeanstalk/Tools/ContainerDefaults.exe
+      LeaderTestScript: c:/Program Files/Amazon/ElasticBeanstalk/Tools/LeaderTest.bat
+      AWSEBHealthdGroupId: ''
+      ServiceActuatorScript: https://s3.dualstack.us-east-2.amazonaws.com/elasticbeanstalk-platform-assets-us-east-2/stalks/eb_windows2022_1.0.806.0_20250118051351/lib/ServiceActuator.ps1
+      downloadSourceBundleScriptLocation:
+        - https://s3.us-east-2.amazonaws.com/elasticbeanstalk-env-resources-us-east-2/eb_patching_resources/download_source_bundle.ps1
+      UserDataScript: https://s3.dualstack.us-east-2.amazonaws.com/elasticbeanstalk-platform-assets-us-east-2/stalks/eb_windows2022_1.0.806.0_20250118051351/lib/Bootstrap.ps1
+      DefaultSSHPort: '22'
+      LaunchType: Migration
+      FastVersionDeployment: 'true'
+      AWSEBHealthdEndpoint: https://elasticbeanstalk-health.us-east-2.amazonaws.com
+      ServiceRole: arn:aws:iam::651706744231:role/service-role/ebs-messenger-dev-service-role
+      EmbeddedConfigsetsEnabled: 'true'
+      EBSNSTopicArn: arn:aws:sns:us-east-2:651706744231:ElasticBeanstalkNotifications-Environment-Messenger-Dev
+      nodeploymentOnStartup: 'true'
+      ebpatchscripturl:
+        - https://s3.us-east-2.amazonaws.com/elasticbeanstalk-env-resources-us-east-2/eb_patching_resources/patch_win_instance.zip
+  EnvironmentInfoTasks:
+    systemtail:
+      LocationPrefix: resources/environments/logs/systemtail/
+      AutoClean: 'true'
+      CommandName: CMD-SystemTailLogs
+    tail:
+      LocationPrefix: resources/environments/logs/tail/
+      AutoClean: 'true'
+      CommandName: CMD-TailLogs
+    publish:
+      LocationPrefix: resources/environments/logs/publish/
+    bundle:
+      LocationPrefix: resources/environments/logs/bundle/
+      AutoClean: 'true'
+      CommandName: CMD-BundleLogs
+  XRay:
+    Configuration:
+      Version: v1.0
+  ContainerMeta:
+    AMIMeta:
+      RepoReleaseVersion: '2025.01'
+      Owner: amazon
+      AMIVersion: 2025.01.15
+      AMIName: Windows_Server-2022-English-Full-Base-2025.01.15
+Outputs: {}
+Resources:
+  AWSEBSecurityGroup:
+    Properties:
+      GroupDescription: VPC Security Group
+      VpcId: vpc-03894b9ddfb03ace2
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          SourceSecurityGroupId: sg-0e27e6f13ca377e54
+          ToPort: 80
+          SourceSecurityGroupOwnerId: '651706744231'
+    Type: AWS::EC2::SecurityGroup
+  AWSEBAutoScalingScaleDownPolicy:
+    Properties:
+      ScalingAdjustment: '-1'
+      AutoScalingGroupName: !Ref AWSEBAutoScalingGroup
+      AdjustmentType: ChangeInCapacity
+    Type: AWS::AutoScaling::ScalingPolicy
+  AWSEBInstanceLaunchWaitHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+  AWSEBAutoScalingGroup:
+    Metadata:
+      ForcingMetadataUpdate: Changing something in the metadata will force re-compuation
+      AWS::ElasticBeanstalk::Ext:
+        _AppSourceUrlFileContent:
+          url: !Ref AppSource
+        _TriggersConfig:
+          configDeploy:
+            _Command: CMD-ConfigDeploy
+            _WatchGroups:
+              - _TriggerConfigDeployment
+          applicationDeploy:
+            _Command: CMD-AppDeploy
+            _WatchGroups:
+              - _TriggerAppDeployment
+        _ParameterTriggers:
+          _TriggerConfigDeployment:
+            - LogPublicationControl
+            - InstancePort
+            - TargetRuntime
+            - Allow32BitApplications
+            - EnvironmentVariables
+            - SystemType
+            - StreamLogs
+          _TriggerAppDeployment:
+            - AppSource
+        _ContainerConfigFileContent:
+          container:
+            xray_enabled: !Ref XRayEnabled
+            default_log_list:
+              - /IIS-Log
+              - /EBHooks-Log
+              - /EBDeploy-Log
+            loggroup_name_path_mapping:
+              /IIS-Log: C:\inetpub\logs\LogFiles\W3SVC1
+              /EBHooks-Log: "C:\\Program Files\\Amazon\\ElasticBeanstalk\tools\\logstream\\Hooks"
+              /EBDeploy-Log: "C:\\Program Files\\Amazon\\ElasticBeanstalk\tools\\logstream\\AWSDeployment"
+            log_group_name_prefix: /aws/elasticbeanstalk
+            healthd_system_type: !Ref SystemType
+          iis:
+            instanceport: !Ref InstancePort
+            targetruntime: !Ref TargetRuntime
+            allow32bitapps: !Ref Allow32BitApplications
+            env: !Ref EnvironmentVariables
+          system:
+            LogPublicationControl: !Ref LogPublicationControl
+            AWSEBAgentId: !Ref AWSEBAgentId
+            AWSEBReferrerId: !Ref AWSEBReferrerId
+            environment_name: Messenger-Dev
+          optionsettings:
+            aws:elasticbeanstalk:cloudwatch:logs:
+              StreamLogs: true
+        _LaunchS3URL: https://elasticbeanstalk-us-east-2.s3.us-east-2.amazonaws.com/environments/f7fcc6e8-6f59-4753-937e-375a01683ce8/launch_control?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEMX%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMiJHMEUCIQDWbGdk49yy1wlB7xm7YNoirQBQrME5%2FGR%2FJnzDSvaqRwIgZ2wazuLThxrM52ZCiwIuKZteCbX2dAS19izFvpL9%2FMYq9AII%2Fv%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARAFGgwwODk5MzgxMzg3OTciDBYkrIA3stOv9GC3uSrIAuu73bitqCt8lytHtCT9Yk30VI2%2B3JOu7rs6qiP8S%2BdkKC8JavQOQcRmg5hH76fo%2BoT99Eagu6lZ33MbmqSSF9brluAX4jvnynF23kGkMLNgcfcka%2FrubD0GnwHzawXF1MWsM9XghBu5XrMFjfNYq5OggKzm2CIqnKLs0%2B%2BgpIjXDFAzHpdR7OIT7zpPy7AElEY7yqgc5UovVONy6EWf1yK1XK1R8AjksnpZK68QgxRBUvm7msqQNiQ%2BY2PEWf7Pjt2wBuyYIhRl205l99Tp6EJu4uVg8tHhpHHVS4r2mlaiPF8MRqPX9rTZuTVYy%2FO167rjJczmSnc5%2F3w%2BVB%2BQbPNQOv7wbqnjcJyrSsv6iC5Je0isrCC2UQHO0vSfYexzaRlyNuGQj06eHHqNaFLhdVaQkKuufowomj2C3QxRnXwGu01iSBIjcgAw1bSfvgY6vwH6sgvTMqg6ezK8Q%2FmEvz4u28ca0Ld8fQyHseLKUTMVpz4t8g%2B9ggj6ePQvb5FDLsgdQ4jR4l8yNnu3AIi7g4kHfFudbnlJ0c259AyjxBPNYHjhIq94oEfowUkqTlqdCf8c1WPrAuWXN1xhLuSMeoa2cpTuDraEonRmBl9GbM4wFXV5HvuQ2AXhPMUxs27QMLy0w6bwzyChtrXFUj6jVriOT9kbcFe0reL9EDSiosWxI%2F5SLOkiDvUgP7XsUer6LA%3D%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20250305T052024Z&X-Amz-SignedHeaders=host&X-Amz-Expires=43200&X-Amz-Credential=ASIARJ4F3C2WS3E5KFAA%2F20250305%2Fus-east-2%2Fs3%2Faws4_request&X-Amz-Signature=abc8008cc14247dfe38636b2bc8c8228d7fa29262ef03295ffd0169420514552
+        _API:
+          _Commands:
+            CMD-TailLogs:
+              _Stages:
+                01_enact:
+                  - InfoTask-TailLogs
+            CMD-Startup:
+              _RunStaged: 'true'
+              _Stages:
+                01_pre:
+                  - Infra-EmbeddedPreBuild
+                  - Hook-PostInit
+                  - Hook-PreAppDeploy
+                  - Infra-EmbeddedPostBuild
+                02_enact:
+                  - Hook-EnactAppDeploy
+                  - Hook-PostAppDeploy
+                  - Infra-WriteVersionOnStartup
+            CMD-ImmutableDeploymentFlip:
+              _RunStaged: 'true'
+              _Stages:
+                01_enact:
+                  - ImmutableDeploymentFlip
+            CMD-AppDeploy:
+              _RunStaged: 'true'
+              _Stages:
+                01_pre:
+                  - Infra-WriteRuntimeConfig
+                  - Infra-EmbeddedPreBuild
+                  - Hook-PreAppDeploy
+                  - Infra-EmbeddedPostBuild
+                02_enact:
+                  - Hook-EnactAppDeploy
+                  - Hook-PostAppDeploy
+            CMD-BundleLogs:
+              _Stages:
+                01_enact:
+                  - InfoTask-BundleLogs
+            CMD-SystemTailLogs:
+              _Stages:
+                01_enact:
+                  - InfoTask-SystemTailLogs
+            CMD-PatchInstance:
+              _Stages:
+                01_enact:
+                  - _Infra-PatchInstance
+            CMD-RestartAppServer:
+              _RunStaged: 'false'
+              _Stages:
+                01_enact:
+                  - Infra-WriteRuntimeConfig
+                  - Hook-PreRestartAppServer
+                02_enact:
+                  - Hook-EnactRestartAppServer
+                  - Hook-PostRestartAppServer
+            CMD-ConfigDeploy:
+              _RunStaged: 'false'
+              _Stages:
+                01_pre:
+                  - Infra-WriteRuntimeConfig
+                  - Hook-PreConfigDeploy
+                02_enact:
+                  - Hook-EnactConfigDeploy
+                  - Hook-PostConfigDeploy
+        AWS::CloudFormation::Init:
+          configSets:
+            _OnInstanceBoot: []
+        AvailabilityZoneCount: Any
+        _LaunchStage: Running
+        InstanceSignalURL: !Ref AWSEBInstanceLaunchWaitHandle
+        _EnvironmentInfoTaskMapping: EnvironmentInfoTasks
+      AWS::CloudFormation::Init:
+        Hook-PostInit:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe postinit
+        InfoTask-TailLogs:
+          commands:
+            taillogs:
+              waitAfterCompletion: 0
+              command: !Join
+                - ''
+                - - TailLogs.exe -c "c:\Program Files\Amazon\ElasticBeanstalk\config\taillogs.d"
+                  - ' --location-prefix '
+                  - !FindInMap
+                    - EnvironmentInfoTasks
+                    - tail
+                    - LocationPrefix
+        AWSEBCfnHupEndpointOverride:
+          files:
+            c:\cfn\endpoints-override.json:
+              content: !Join
+                - ''
+                - - '{'
+                  - "\r\n"
+                  - '  "Services": {'
+                  - "\r\n"
+                  - '    "AmazonS3": {'
+                  - "\r\n"
+                  - '      "Endpoints": ['
+                  - "\r\n"
+                  - '          { "Region": "us-east-1", "Hostname": "s3.amazonaws.com", "Default": true },'
+                  - "\r\n"
+                  - '          { "Region": "us-east-1", "Hostname": "s3-external-1.amazonaws.com" },'
+                  - "\r\n"
+                  - '          { "Region": "us-east-1", "Hostname": "s3-external-2.amazonaws.com" }'
+                  - "\r\n"
+                  - '      ]'
+                  - "\r\n"
+                  - '    },'
+                  - "\r\n"
+                  - '    "AmazonSQS": {'
+                  - "\r\n"
+                  - '      "Endpoints": ['
+                  - "\r\n"
+                  - '      ]'
+                  - "\r\n"
+                  - '    }'
+                  - "\r\n"
+                  - '  }'
+                  - "\r\n"
+                  - '}'
+                  - "\r\n"
+        Infra-WriteLeaderTestScript:
+          files:
+            c:/Program Files/Amazon/ElasticBeanstalk/Tools/LeaderTest.bat:
+              content: "@ECHO OFF\r\nIF \"%EB_IS_COMMAND_LEADER%\" == \"true\" (EXIT /b 0) ELSE (EXIT /b 1)"
+        Hook-PreRestartAppServer:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe restartappserver\pre
+        Hook-PreAppDeploy:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe appdeploy\pre
+        Infra-PatchInstance:
+          sources:
+            C:/Program Files/Amazon/ElasticBeanstalk/patch/: !Select
+              - 0
+              - !FindInMap
+                - AWSEBOptions
+                - options
+                - ebpatchscripturl
+          commands:
+            01executepatch:
+              command: C:\"Program Files"\Amazon\ElasticBeanstalk\patch\patch.bat
+        Hook-PostConfigDeploy:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe configdeploy\post
+        AWSEBCfnHup:
+          services:
+            windows:
+              cfn-hup:
+                ensureRunning: 'true'
+                enabled: 'true'
+        Hook-EnactRestartAppServer:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe restartappserver\enact
+        Infra-WritePublishLogsConf:
+          files:
+            C:/Program Files/Amazon/ElasticBeanstalk/config/publogs.d/eb-system.conf:
+              content: !Join
+                - "\r\n"
+                - - C:\Program Files\Amazon\ElasticBeanstalk\logs\!BundleLogs
+                  - C:\Program Files\Amazon\ElasticBeanstalk\logs\!TailLogs
+                  - C:\inetpub\logs\LogFiles\W3SVC1\
+                  - ''
+            C:/Program Files/Amazon/ElasticBeanstalk/config/publogs.d/cfn-system.conf:
+              content: !Join
+                - "\r\n"
+                - - c:\cfn\log\cfn-hup.log
+                  - c:\cfn\log\cfn-init.log
+                  - ''
+            C:/Program Files/Amazon/ElasticBeanstalk/config/publogs.d/eb-xray.conf:
+              content: !Join
+                - "\r\n"
+                - - C:\Program Files\Amazon\XRay\logs\!TailLogs
+                  - ''
+        Infra-WriteTailLogsConf:
+          files:
+            C:/Program Files/Amazon/ElasticBeanstalk/config/taillogs.d/eb-version-deployment.conf:
+              content: !Join
+                - "\r\n"
+                - - c:\cfn\log\eb-version-deployment.log
+                  - ''
+            C:/Program Files/Amazon/ElasticBeanstalk/config/taillogs.d/eb-system.conf:
+              content: !Join
+                - "\r\n"
+                - - C:\Program Files\Amazon\ElasticBeanstalk\logs\!TailLogs
+                  - C:\inetpub\logs\LogFiles\W3SVC1\
+                  - ''
+            C:/Program Files/Amazon/ElasticBeanstalk/config/taillogs.d/cfn-system.conf:
+              content: !Join
+                - "\r\n"
+                - - c:\cfn\log\cfn-hup.log
+                  - c:\cfn\log\cfn-init.log
+                  - ''
+        Infra-WriteBundleLogsConf:
+          files:
+            C:/Program Files/Amazon/ElasticBeanstalk/config/bundlelogs.d/eb-system.conf:
+              content: !Join
+                - "\r\n"
+                - - C:\Program Files\Amazon\ElasticBeanstalk\logs\
+                  - C:\Program Files\Amazon\ElasticBeanstalk\HealthD\Logs\
+                  - C:\inetpub\logs\LogFiles\W3SVC1\
+                  - C:\inetpub\logs\FailedReqLogFiles\
+                  - C:\ProgramData\Amazon\EC2Launch\log\
+                  - ''
+            C:/Program Files/Amazon/ElasticBeanstalk/config/bundlelogs.d/cfn-system.conf:
+              content: !Join
+                - "\r\n"
+                - - c:\cfn\log\
+                  - ''
+        Hook-PostRestartAppServer:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe restartappserver\post
+        ImmutableDeploymentFlip:
+          commands:
+            01-reregister:
+              waitAfterCompletion: '0'
+              command: powershell.exe -File "c:\Program Files\Amazon\ElasticBeanstalk\Tools\immutable\RegisterCfnHup.ps1"
+        InfoTask-BundleLogs:
+          commands:
+            bundlelogs:
+              waitAfterCompletion: 0
+              command: !Join
+                - ''
+                - - BundleLogs.exe -c "c:\Program Files\Amazon\ElasticBeanstalk\config\bundlelogs.d"
+                  - ' --location-prefix '
+                  - !FindInMap
+                    - EnvironmentInfoTasks
+                    - bundle
+                    - LocationPrefix
+        AWSEBBaseConfig:
+          files:
+            c:\cfn\cfn-hup.conf:
+              content: !Join
+                - ''
+                - - '[main]'
+                  - "\r\n"
+                  - stack=
+                  - !Ref AWS::StackId
+                  - "\r\n"
+                  - region=
+                  - !Ref AWS::Region
+                  - "\r\n"
+            c:\cfn\hooks.d\aws-eb-command-handler.conf:
+              content: !Join
+                - ''
+                - - '[aws-eb-command-handler]'
+                  - "\r\n"
+                  - triggers=on.command
+                  - "\r\n"
+                  - path=ElasticBeanstalkCommand-
+                  - AWSEBAutoScalingGroup
+                  - "\r\n"
+                  - action=c:/Program Files/Amazon/ElasticBeanstalk/Tools/CommandWrapper.exe
+                  - "\r\n"
+            c:\cfn\aws-eb-stack.properties:
+              content: !Join
+                - ''
+                - - environment_id=
+                  - !Ref AWSEBEnvironmentId
+                  - "\r\n"
+                  - environment_name=
+                  - !Ref AWSEBEnvironmentName
+                  - "\r\n"
+                  - environment_bucket=
+                  - !Ref AWSEBEnvironmentBucket
+                  - "\r\n"
+                  - stack_name=
+                  - !Ref AWS::StackId
+                  - "\r\n"
+                  - resource=
+                  - AWSEBAutoScalingGroup
+                  - "\r\n"
+                  - region=
+                  - !Ref AWS::Region
+                  - "\r\n"
+            c:\cfn\wait-condition-handle.txt:
+              content: !Ref AWSEBInstanceLaunchWaitHandle
+        AWSEBTools:
+          sources:
+            C:/Program Files/Amazon/ElasticBeanstalk/tools/logstream/: https://s3.dualstack.us-east-2.amazonaws.com/elasticbeanstalk-platform-assets-us-east-2/stalks/eb_windows2022_1.0.806.0_20250118051351/lib/logstream.zip
+            C:/Program Files/Amazon/ElasticBeanstalk/hooks/: https://s3.dualstack.us-east-2.amazonaws.com/elasticbeanstalk-platform-assets-us-east-2/stalks/eb_windows2022_1.0.806.0_20250118051351/lib/hooks.zip
+            C:/Program Files/Amazon/ElasticBeanstalk/tools/immutable/: https://s3.dualstack.us-east-2.amazonaws.com/elasticbeanstalk-platform-assets-us-east-2/stalks/eb_windows2022_1.0.806.0_20250118051351/lib/immutable.zip
+            C:/Program Files/Amazon/ElasticBeanstalk/tools/multiapp/: https://s3.dualstack.us-east-2.amazonaws.com/elasticbeanstalk-platform-assets-us-east-2/stalks/eb_windows2022_1.0.806.0_20250118051351/lib/multiapp.zip
+          files:
+            C:\Windows\System32\inetsrv\config\schema\ElasticBeanstalk_schema.xml:
+              content: !Join
+                - ''
+                - - "<configSchema>\r\n"
+                  - "  <sectionSchema name=\"ElasticBeanstalk/environment\">\r\n"
+                  - "    <collection addElement=\"add\" removeElement=\"remove\" clearElement=\"clear\">\r\n"
+                  - "      <attribute name=\"key\" isUniqueKey=\"true\" type=\"string\" />\r\n"
+                  - "      <attribute name=\"value\" type=\"string\" />\r\n"
+                  - "    </collection>\r\n"
+                  - "  </sectionSchema>\r\n"
+                  - </configSchema>
+        InfoTask-SystemTailLogs:
+          commands:
+            systemtaillogs:
+              waitAfterCompletion: 0
+              command: !Join
+                - ''
+                - - TailLogs.exe -c "c:\Program Files\Amazon\ElasticBeanstalk\config\tailsyslogs.d"
+                  - ' --location-prefix '
+                  - !FindInMap
+                    - EnvironmentInfoTasks
+                    - systemtail
+                    - LocationPrefix
+        Hook-EnactAppDeploy:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe appdeploy\enact
+        Infra-WriteSystemTailLogsConf: {}
+        Hook-EnactConfigDeploy:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe configdeploy\enact
+        Hook-PreConfigDeploy:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe configdeploy\pre
+        Infra-WritePublishLogsCron:
+          files:
+            C:/Program Files/Amazon/ElasticBeanstalk/config/publishlogs.bat:
+              content: !Join
+                - ''
+                - - '"C:\Program Files\Amazon\ElasticBeanstalk\Tools\PublishLogs.exe" '
+                  - '-c "C:\Program Files\Amazon\ElasticBeanstalk\config\publogs.d" '
+                  - ' --delete-local-logs'
+                  - ' --location-prefix '
+                  - !FindInMap
+                    - EnvironmentInfoTasks
+                    - publish
+                    - LocationPrefix
+          commands:
+            schedulepublishlogs:
+              waitAfterCompletion: 0
+              command: schtasks /create /sc hourly /ru System /tn "Publish Beanstalk Logs" /tr "\"C:\Program Files\Amazon\ElasticBeanstalk\config\publishlogs.bat\""
+        Hook-PostAppDeploy:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe appdeploy\post
+        Infra-WriteApplication1: {}
+        configSets:
+          Hook-PostInit:
+            - Hook-PostInit
+          InfoTask-TailLogs:
+            - InfoTask-TailLogs
+          _OnInstanceReboot:
+            - AWSEBTools
+            - AWSEBBaseConfig
+            - AWSEBCfnHup
+            - Infra-WriteRuntimeConfig
+          Hook-PreRestartAppServer:
+            - Hook-PreRestartAppServer
+          Hook-PreAppDeploy:
+            - Hook-PreAppDeploy
+          _OnInstanceBoot:
+            - AWSEBTools
+            - AWSEBBaseConfig
+            - AWSEBCfnHupEndpointOverride
+            - AWSEBCfnHup
+            - Infra-WriteLeaderTestScript
+            - Infra-WriteRuntimeConfig
+            - Infra-WriteTailLogsConf
+            - Infra-WriteSystemTailLogsConf
+            - Infra-WriteBundleLogsConf
+            - Infra-WritePublishLogsConf
+            - Infra-WritePublishLogsCron
+          Hook-PostConfigDeploy:
+            - Hook-PostConfigDeploy
+          Hook-EnactRestartAppServer:
+            - Hook-EnactRestartAppServer
+          Infra-WritePublishLogsConf:
+            - Infra-WritePublishLogsConf
+          _Infra-PatchInstance:
+            - Infra-PatchInstance
+          Infra-WriteTailLogsConf:
+            - Infra-WriteTailLogsConf
+          Infra-WriteBundleLogsConf:
+            - Infra-WriteBundleLogsConf
+          Hook-PostRestartAppServer:
+            - Hook-PostRestartAppServer
+          ImmutableDeploymentFlip:
+            - ImmutableDeploymentFlip
+          InfoTask-BundleLogs:
+            - InfoTask-BundleLogs
+          _AppInstall:
+            - Hook-PreInit
+            - Hook-PostInit
+            - Hook-PreAppDeploy
+            - Hook-EnactAppDeploy
+            - Hook-PostAppDeploy
+          Infra-EmbeddedPreBuild: []
+          InfoTask-SystemTailLogs:
+            - InfoTask-SystemTailLogs
+          Hook-EnactAppDeploy:
+            - Hook-EnactAppDeploy
+          Infra-WriteSystemTailLogsConf:
+            - Infra-WriteSystemTailLogsConf
+          Hook-EnactConfigDeploy:
+            - Hook-EnactConfigDeploy
+          Hook-PreConfigDeploy:
+            - Hook-PreConfigDeploy
+          Infra-EmbeddedPostBuild: []
+          Infra-WritePublishLogsCron:
+            - Infra-WritePublishLogsCron
+          _AppInstallReboot:
+            - Hook-PreAppDeploy
+          Hook-PostAppDeploy:
+            - Hook-PostAppDeploy
+          Infra-WriteApplication1:
+            - Infra-WriteApplication1
+          Infra-WriteApplication2:
+            - Infra-WriteApplication2
+          Infra-WriteVersionOnStartup:
+            - Infra-WriteVersionOnStartup
+          Hook-PreInit:
+            - Hook-PreInit
+          Infra-WriteRuntimeConfig:
+            - Infra-WriteRuntimeConfig
+        Infra-WriteApplication2:
+          files:
+            C:\cfn\download_version_bundle.ps1:
+              source: !Select
+                - 0
+                - !FindInMap
+                  - AWSEBOptions
+                  - options
+                  - downloadSourceBundleScriptLocation
+          commands:
+            01downloadVersion:
+              waitAfterCompletion: '0'
+              command: powershell.exe -ExecutionPolicy Bypass -File C:\cfn\download_version_bundle.ps1
+        Infra-WriteVersionOnStartup:
+          waitAfterCompletion: 0
+          command: !Join
+            - ''
+            - - c:\"Program Files"\Amazon\cfn-bootstrap\cfn-get-metadata -v
+              - ' -r '
+              - AWSEBAutoScalingGroup
+              - ' -s '
+              - !Ref AWS::StackId
+              - ' --region '
+              - !Ref AWS::Region
+              - ' -k AWS::ElasticBeanstalk::Metadata.Version > c:\"Program Files"\Amazon\ElasticBeanstalk\config\aws-eb-startup-version'
+        Hook-PreInit:
+          commands:
+            hooks:
+              waitAfterCompletion: 0
+              command: HooksExecutor.exe preinit
+        Infra-WriteRuntimeConfig:
+          commands:
+            01mkdir:
+              waitAfterCompletion: 0
+              command: IF NOT EXIST c:\"Program Files"\Amazon\ElasticBeanstalk\config (mkdir c:\"Program Files"\Amazon\ElasticBeanstalk\config)
+            02writeappsource:
+              waitAfterCompletion: 5
+              command: !Join
+                - ''
+                - - c:\"Program Files"\Amazon\cfn-bootstrap\cfn-get-metadata -v
+                  - ' -r '
+                  - AWSEBAutoScalingGroup
+                  - ' -s '
+                  - !Ref AWS::StackId
+                  - ' --region '
+                  - !Ref AWS::Region
+                  - ' -k AWS::ElasticBeanstalk::Ext._AppSourceUrlFileContent > c:\"Program Files"\Amazon\ElasticBeanstalk\config\appsourceurl'
+            03writeconfig:
+              waitAfterCompletion: 0
+              command: !Join
+                - ''
+                - - c:\"Program Files"\Amazon\cfn-bootstrap\cfn-get-metadata -v
+                  - ' -r '
+                  - AWSEBAutoScalingGroup
+                  - ' -s '
+                  - !Ref AWS::StackId
+                  - ' --region '
+                  - !Ref AWS::Region
+                  - ' -k AWS::ElasticBeanstalk::Ext._ContainerConfigFileContent > c:\"Program Files"\Amazon\ElasticBeanstalk\config\containerconfiguration'
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn: AWSEBBeanstalkMetadata
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: true
+    Properties:
+      MinSize: '1'
+      CapacityRebalance: false
+      TargetGroupARNs:
+        - !Ref AWSEBV2LoadBalancerTargetGroup
+      AvailabilityZones:
+        - us-east-2a
+        - us-east-2b
+      Cooldown: '360'
+      LaunchTemplate:
+        Version: !GetAtt AWSEBEC2LaunchTemplate.LatestVersionNumber
+        LaunchTemplateId: !Ref AWSEBEC2LaunchTemplate
+      VPCZoneIdentifier:
+        - subnet-0277e92d0dacdbb91
+        - subnet-0da95c9da91a87aa4
+      MaxSize: '1'
+      Tags:
+        - Value: !Ref AWSEBEnvironmentName
+          Key: elasticbeanstalk:environment-name
+          PropagateAtLaunch: true
+        - Value: !Ref AWSEBEnvironmentName
+          Key: Name
+          PropagateAtLaunch: true
+        - Value: !Ref AWSEBEnvironmentId
+          Key: elasticbeanstalk:environment-id
+          PropagateAtLaunch: true
+  AWSEBSecurityGroupSSHIngress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      FromPort: '22'
+      ToPort: '22'
+      IpProtocol: tcp
+      GroupId: !Ref AWSEBSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+  AWSEBInstanceLaunchWaitCondition:
+    DependsOn: AWSEBAutoScalingGroup
+    Type: AWS::CloudFormation::WaitCondition
+    Properties:
+      Timeout: '1200'
+      Count: '1'
+      Handle: !Ref AWSEBInstanceLaunchWaitHandle
+  AWSEBAutoScalingScaleUpPolicy:
+    Properties:
+      ScalingAdjustment: '1'
+      AutoScalingGroupName: !Ref AWSEBAutoScalingGroup
+      AdjustmentType: ChangeInCapacity
+    Type: AWS::AutoScaling::ScalingPolicy
+  AWSEBEC2LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        KeyName: Messenger-Dev-KP
+        UserData: !Base64
+          Fn::Join:
+            - ''
+            - - |
+                version: 1.1
+              - |
+                tasks:
+              - |2
+                  - task: executeScript
+              - |2
+                    inputs:
+              - |2
+                      - frequency: once
+              - |2
+                        type: batch
+              - |2
+                        runAs: localSystem
+              - |2
+                        content: |-
+              - |2
+                          IF NOT EXIST c:\cfn (mkdir c:\cfn)
+              - |2
+                          IF NOT EXIST c:\cfn\log (mkdir c:\cfn\log)
+              - |2
+                          IF NOT EXIST "c:\Program Files\Amazon\ElasticBeanstalk\Tools" (mkdir "c:\Program Files\Amazon\ElasticBeanstalk\Tools")
+              - |2
+                          IF NOT EXIST "c:\Program Files\Amazon\ElasticBeanstalk\HealthD" (mkdir "c:\Program Files\Amazon\ElasticBeanstalk\HealthD")
+              - |2
+                          :loop
+              - '          powershell.exe -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('''
+              - !FindInMap
+                - AWSEBOptions
+                - options
+                - UserDataScript
+              - ''', '''
+              - c:\Program Files\Amazon\ElasticBeanstalk\Tools\Bootstrap.ps1
+              - |
+                ')"
+              - |2
+                          if %errorlevel% neq 0 goto loop
+              - |2
+                          :loop2
+              - '          powershell.exe -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('''
+              - !FindInMap
+                - AWSEBOptions
+                - options
+                - ServiceActuatorScript
+              - ''', '''
+              - c:\Program Files\Amazon\ElasticBeanstalk\Tools\ServiceActuator.ps1
+              - |
+                ')"
+              - |2
+                          if %errorlevel% neq 0 goto loop2
+              - '          powershell.exe -ExecutionPolicy Bypass -File '
+              - '"C:\Program Files\Amazon\ElasticBeanstalk\Tools\Bootstrap.ps1"'
+              - ' '
+              - !Ref AWS::Region
+              - ' '
+              - !Ref AWS::StackId
+              - ' '
+              - AWSEBAutoScalingGroup
+              - ' "'
+              - !Ref AWSEBInstanceLaunchWaitHandle
+              - '" "'
+              - !FindInMap
+                - AWSEBOptions
+                - options
+                - AWSEBHealthdEndpoint
+              - '" "'
+              - !FindInMap
+                - AWSEBOptions
+                - options
+                - AWSEBHealthdGroupId
+              - '"'
+              - |+
+
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            Groups:
+              - sg-07c250c1567c38992
+              - !GetAtt AWSEBSecurityGroup.GroupId
+            SubnetId: subnet-0277e92d0dacdbb91
+            AssociatePublicIpAddress: false
+        ImageId: !FindInMap
+          - AWSEBAWSRegionArch2AMI
+          - !Ref AWS::Region
+          - hvm
+        BlockDeviceMappings:
+          - Ebs:
+              VolumeType: gp3
+              Throughput: '125'
+              Iops: '3000'
+              VolumeSize: '30'
+            DeviceName: /dev/sda1
+        IamInstanceProfile:
+          Name: ebs-messenger-dev-ec2-role
+        InstanceType: !Ref InstanceType
+        Monitoring:
+          Enabled: false
+  AWSEBCloudwatchAlarmHigh:
+    Properties:
+      AlarmActions:
+        - !Ref AWSEBAutoScalingScaleUpPolicy
+      MetricName: NetworkOut
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      AlarmDescription: ElasticBeanstalk Default Scale Up alarm
+      Period: '300'
+      Dimensions:
+        - Value: !Ref AWSEBAutoScalingGroup
+          Name: AutoScalingGroupName
+      EvaluationPeriods: '1'
+      Namespace: AWS/EC2
+      Threshold: '6000000'
+    Type: AWS::CloudWatch::Alarm
+  AWSEBBeanstalkMetadata:
+    Metadata:
+      AWS::ElasticBeanstalk::Ext:
+        Parameters:
+          TargetRuntime: !Ref TargetRuntime
+          LogPublicationControl: !Ref LogPublicationControl
+          InstanceTypeFamily: !Ref InstanceTypeFamily
+          XRayEnabled: !Ref XRayEnabled
+          InstancePort: !Ref InstancePort
+          AWSEBEnvironmentId: !Ref AWSEBEnvironmentId
+          SystemType: !Ref SystemType
+          LargerInstanceTypeRequired: !Ref LargerInstanceTypeRequired
+          AWSEBEnvironmentName: !Ref AWSEBEnvironmentName
+          AWSEBReferrerId: !Ref AWSEBReferrerId
+          AppSource: !Ref AppSource
+          EnvironmentVariables: !Ref EnvironmentVariables
+          AWSEBAgentId: !Ref AWSEBAgentId
+          InstanceType: !Ref InstanceType
+          AWSEBEnvironmentBucket: !Ref AWSEBEnvironmentBucket
+          Allow32BitApplications: !Ref Allow32BitApplications
+      AWS::ElasticBeanstalk::Metadata:
+        EnvironmentId: e-wet5w5vbfu
+        Description: Environment for Messenger Dev
+        RequestId: 286f6ca8-acdc-4fab-a2b1-a6cb0f7d114a
+        Version: 286f6ca8-acdc-4fab-a2b1-a6cb0f7d114a
+        EnvironmentName: Messenger-Dev
+        DateUpdated: '2025-02-03T00:32:14'
+        DateCreated: '2025-01-31T02:41:28'
+        DeploymentVersion: 2
+        DateLastModified: '2025-03-05T05:20:24'
+        Name: e-wet5w5vbfu
+    Type: AWS::CloudFormation::WaitConditionHandle
+  AWSEBV2LoadBalancerTargetGroup:
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      VpcId: vpc-03894b9ddfb03ace2
+      HealthyThresholdCount: 3
+      HealthCheckPath: /
+      Port: 80
+      TargetGroupAttributes:
+        - Value: '20'
+          Key: deregistration_delay.timeout_seconds
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      HealthCheckTimeoutSeconds: 5
+      Name: awseb-messenge-default-mbg6f
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  AWSEBCloudwatchAlarmLow:
+    Properties:
+      AlarmActions:
+        - !Ref AWSEBAutoScalingScaleDownPolicy
+      MetricName: NetworkOut
+      ComparisonOperator: LessThanThreshold
+      Statistic: Average
+      AlarmDescription: ElasticBeanstalk Default Scale Down alarm
+      Period: '300'
+      Dimensions:
+        - Value: !Ref AWSEBAutoScalingGroup
+          Name: AutoScalingGroupName
+      EvaluationPeriods: '1'
+      Namespace: AWS/EC2
+      Threshold: '2000000'
+    Type: AWS::CloudWatch::Alarm

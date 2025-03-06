@@ -1,0 +1,91 @@
+[
+    {
+        "ParameterKey": "Region",
+        "ParameterValue": "us-east-2"
+    },
+    {
+        "ParameterKey": "EnvironmentName",
+        "ParameterValue": "qa"
+    },
+    {
+        "ParameterKey": "VpcCIDR",
+        "ParameterValue": "10.160.92.0/22"
+    },
+    {
+        "ParameterKey": "PubSubnet12bCIDR",
+        "ParameterValue": "10.160.92.64/26"
+    },
+    {
+        "ParameterKey": "mgmtSubnet22bCIDR",
+        "ParameterValue": "10.160.93.64/26"
+    },
+    {
+        "ParameterKey": "webSubnet32bCIDR",
+        "ParameterValue": "10.160.92.192/26"
+    },
+    {
+        "ParameterKey": "PubSubnet12aCIDR",
+        "ParameterValue": "10.160.92.0/26"
+    },
+    {
+        "ParameterKey": "mgmtSubnet22aCIDR",
+        "ParameterValue": "10.160.93.0/26"
+    },
+    {
+        "ParameterKey": "webSubnet32aCIDR",
+        "ParameterValue": "10.160.92.128/26"
+    },
+    {
+        "ParameterKey": "DBSubnet22bCIDR",
+        "ParameterValue": "10.160.94.196/26"
+    },
+    {
+        "ParameterKey": "SVCSubnet22bCIDR",
+        "ParameterValue": "10.160.94.64/26"
+    },
+    {
+        "ParameterKey": "PresSubnet32bCIDR",
+        "ParameterValue": "10.160.93.192/26"
+    },
+    {
+        "ParameterKey": "DBSubnet12aCIDR",
+        "ParameterValue": "10.160.94.128/26"
+    },
+    {
+        "ParameterKey": "SVCSubnet22aCIDR",
+        "ParameterValue": "10.160.94.0/26"
+    },
+    {
+        "ParameterKey": "PresSubnet32aCIDR",
+        "ParameterValue": "10.160.93.128/26"
+    },
+    {
+        "ParameterKey": "DBSubnet32cCIDR",
+        "ParameterValue": "10.160.95.0/26"
+    },
+    {
+        "ParameterKey": "DBInstanceClass",
+        "ParameterValue": "db.t3.medium"
+    },
+    {
+        "ParameterKey": "Engine",
+        "ParameterValue": "postgres"
+    },
+    {
+        "ParameterKey": "EngineVersion",
+        "ParameterValue": "16.3"
+    },
+    {
+        "ParameterKey": "DBAllocatedStorage",
+        "ParameterValue": "50"
+    },
+    {
+        "ParameterKey": "DBUsername",
+        "ParameterValue": "postgres"
+    },
+    {
+        "ParameterKey": "LicenseModel",
+        "ParameterValue": "postgresql-license"
+    }
+    
+]
