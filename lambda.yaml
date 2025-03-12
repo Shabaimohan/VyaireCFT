@@ -13,16 +13,12 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Architectures:
-          - !Ref Architectures
+          - x86_64
       Description: Lambda function for Data Migration
-      FunctionName: "Testinglambda"
-      Runtime: nodejs18.x 
+      FunctionName: !Sub "rkp-${EnvironmentName}-messenger-lambda"
+      Runtime: dotnet8
       CodeUri: ./
-      # Code:
-      #   S3Bucket: devmds
-      #   S3Key: my_deployment_package.zip
-      # Timeout: 60
-      
+      Timeout: 120
       MemorySize: 256
       Handler: "index.handler"
       Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/lambs3"
@@ -35,15 +31,16 @@ Resources:
         Size: 512
       VpcConfig:
         SecurityGroupIds:
-          - sg-06a34cfdf6fc5754a
+          - !Ref APPSecuritygroup
+          - !Ref ConnectionsSecurityGroup
         SubnetIds:
-          - subnet-0229cd58575eabba3
-          - subnet-00a24e4aba5cb29c4
+          - !Ref SVCSubnet12a
+          - !Ref SVCSubnet22b
 
   LambdaUrl:
     Type: AWS::Lambda::Url
     Properties:
-      AuthType: NONE  # Change to AWS_IAM if you want to restrict access
+      AuthType: AWS_IAM  # Change to AWS_IAM if you want to restrict access
       TargetFunctionArn: !GetAtt Lambda.Arn          
       InvokeMode: RESPONSE_STREAM
 
@@ -53,7 +50,7 @@ Resources:
       Action: lambda:InvokeFunctionUrl
       FunctionName: !Ref Lambda
       Principal: "*"
-      FunctionUrlAuthType: NONE  # Change this if restricting access
+      FunctionUrlAuthType: AWS_IAM  # Change this if restricting access
 
 Outputs:
   LambdaFunctionUrl:

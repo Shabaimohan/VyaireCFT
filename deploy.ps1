@@ -2,14 +2,17 @@
 
 Param(
     [Parameter(Mandatory=$true)]
-    [string]$Env
+    [string]$Env,
+
+    [Parameter(Mandatory=$true)]
+    [string]$Account
 )
 
 # Get the script directory
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Define correct file names
-$TemplateFile = "$ScriptPath\aws-deploy.yaml"
+$TemplateFile = "$ScriptPath\aws-${Account}-deploy.yaml"
 $ParameterFile = "$ScriptPath\master_${Env}_parameters.json"
 $StackName = "vywus-$Env-messenger-stack"
 $Region = "us-east-2"

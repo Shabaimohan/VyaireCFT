@@ -1,0 +1,1474 @@
+#yaml-language-server: $schema=https://raw.githubusercontent.com/awslabs/goformation/master/schema/cloudformation.schema.json ["*.yaml", "*.yml"]
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  This template is used to deploy base infra for the rkp environment.
+Parameters:
+  Region:
+    Default: us-east-2
+    Description: An environment name that is prefixed to resource names
+    Type: String
+
+  EnvironmentName:
+    Default: dev
+    Description: An environment name that is prefixed to resource names
+    Type: String
+
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.0.0.0/16
+
+  PubSubnet12bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this Subnet
+    Type: String
+    Default: 10.0.1.0/24
+
+  mgmtSubnet22bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this Subnet
+    Type: String
+    Default: 10.0.2.0/24
+
+  webSubnet32bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.3.0/24
+
+  PubSubnet12aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.4.0/24
+
+  mgmtSubnet22aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.5.0/24
+
+  webSubnet32aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.6.0/24
+
+  DBSubnet22bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this Subnet
+    Type: String
+    Default: 10.0.7.0/24
+
+  SVCSubnet22bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this Subnet
+    Type: String
+    Default: 10.0.8.0/24
+
+  PresSubnet32bCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.9.0/24
+
+  DBSubnet12aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.10.0/24
+
+  SVCSubnet22aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.11.0/24
+
+  PresSubnet32aCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.12.0/24
+
+  DBSubnet32cCIDR:
+    Description: Please enter the IP range (CIDR notation) for this subnet
+    Type: String
+    Default: 10.0.13.0/24
+
+  DBInstanceClass:
+    Default: db.t3.medium
+    Description: DB instance type
+    Type: String
+    ConstraintDescription: Must select a valid DB instance type.
+  
+  Engine:
+    Default: postgres
+    Description: DB Engine Type
+    Type: String
+    ConstraintDescription: Must select a valid DB Engine.
+  
+  EngineVersion:
+    Default: 16.3
+    Description: DB Engine 
+    Type: String
+    ConstraintDescription: Must select a valid DB Engine version.    
+
+  DBAllocatedStorage:
+    Default: 50
+    Description: The size of the database (GiB)
+    Type: Number
+    MinValue: '20'
+    MaxValue: '65536'
+    ConstraintDescription: must be between 20 and 65536 GiB.
+
+  DBUsername:
+    NoEcho: 'true'
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+
+  LicenseModel:
+    Default: postgresql-license
+    Description: DB License Model Type
+    Type: String
+
+Resources:
+###################################################
+#               IAM                               #
+###################################################
+  MyIAMRole:                      # lambda role
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "metrics-transform-lambda-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: rkp-lambda-role
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - tag:GetResources
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - apigateway:GET
+                  - aps:ListWorkspaces
+                  - autoscaling:DescribeAutoScalingGroups
+                  - dms:DescribeReplicationInstances
+                  - dms:DescribeReplicationTasks
+                  - ec2:DescribeTransitGatewayAttachments
+                  - ec2:DescribeSpotFleetRequests
+                  - storagegateway:ListGateways
+                  - storagegateway:ListTagsForResource
+                Resource: "*"
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                Resource: "arn:aws:logs:*:*:*"
+
+  LambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "rkp-messenger-lambda-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: AllowLogging
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: "AllowLogging"
+                Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                Resource: "arn:aws:logs:*:*:*"
+
+
+  ebsmessengerdevec2role:    #EBS to EC2
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ebs-messenger-${EnvironmentName}-ec2-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+
+  ebsmessengerdevservicerole:  #Service update role
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ebs-messenger-${EnvironmentName}-service-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - elasticbeanstalk.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkManagedUpdatesCustomerRolePolicy
+        - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService
+
+  ebsmessengerdevec2roleProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "ebs-messenger-${EnvironmentName}-ec2-profile"
+      Roles:
+        - !Ref ebsmessengerdevec2role
+###################################################
+#               VPC                               #
+###################################################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName"]]
+#################  Public Subnets    ########################
+  PubSubnet12a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PubSubnet12aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-public-", !Select [ 0, !GetAZs '' ]]]
+
+  PubSubnet22a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref mgmtSubnet22aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-mgmt-", !Select [ 0, !GetAZs '' ]]]
+  
+  PubSubnet32a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref webSubnet32aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-web-", !Select [ 0, !GetAZs '' ] ]]
+      
+  PubSubnet12b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PubSubnet12bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-public-", !Select [ 1, !GetAZs '' ]]]
+
+  PubSubnet22b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref mgmtSubnet22bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-mgmt-", !Select [ 1, !GetAZs '' ]]]
+
+  PubSubnet32b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref webSubnet32bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-web-", !Select [ 1, !GetAZs '' ]]]
+##################### IGW #######################
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} IGW
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+################# Route ##########################
+  PublicRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  MgmtRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  WebRoute1:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable3
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+################## Public Route Table ########################
+  RouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-public"]]
+
+  RouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-mgmt"]]
+
+  RouteTable3:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-web"]]
+################### Route table Association ######################
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet12a
+      RouteTableId: !Ref RouteTable1
+    
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet12b
+      RouteTableId: !Ref RouteTable1
+
+  MgmtSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet22a
+      RouteTableId: !Ref RouteTable2
+
+  MgmtSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet22b
+      RouteTableId: !Ref RouteTable2
+
+  WebSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet32a
+      RouteTableId: !Ref RouteTable3
+
+  WebSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PubSubnet32b
+      RouteTableId: !Ref RouteTable3
+######################### Private Subnet #######################
+  DBSubnet12a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref DBSubnet12aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-db-", !Select [ 0, !GetAZs '' ]]]
+
+  SVCSubnet22a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref SVCSubnet22aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-svcs-", !Select [ 0, !GetAZs '' ]]]
+  
+  PresSubnet32a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref PresSubnet32aCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-pres-", !Select [ 0, !GetAZs '' ] ]]
+      
+  DBSubnet12b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref DBSubnet22bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-db-", !Select [ 1, !GetAZs '' ]]]
+
+  SVCSubnet22b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref SVCSubnet22bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-svcs-", !Select [ 1, !GetAZs '' ]]]
+
+  PresSubnet32b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref PresSubnet32bCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-pres-", !Select [ 1, !GetAZs '' ]]]
+
+  DBSubnet12c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      CidrBlock: !Ref DBSubnet32cCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-db-", !Select [ 2, !GetAZs '' ]]]
+
+################## Private Route Table ###########################
+  PvtRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+      - Key: Name
+        Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-SVCS"]]
+
+######################### Route table Association #################
+  DBSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBSubnet12a
+      RouteTableId: !Ref PvtRouteTable1
+    
+  DBSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBSubnet12b
+      RouteTableId: !Ref PvtRouteTable1
+
+  SVCSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SVCSubnet22a
+      RouteTableId: !Ref PvtRouteTable1
+
+  SVCSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SVCSubnet22b
+      RouteTableId: !Ref PvtRouteTable1
+
+  PresSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PresSubnet32a
+      RouteTableId: !Ref PvtRouteTable1
+
+  PresSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PresSubnet32b
+      RouteTableId: !Ref PvtRouteTable1
+
+  DBSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBSubnet12c
+      RouteTableId: !Ref PvtRouteTable1
+
+####################### NGW ########################
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP.AllocationId
+      SubnetId: !Ref PubSubnet12a
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-NAT"]]
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+        Domain: vpc
+      
+  RouteNATGateway:
+   Type: AWS::EC2::Route
+   Properties:
+      RouteTableId: !Ref  PvtRouteTable1
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NATGateway 
+
+
+#########################################
+#          Security Group               #
+#########################################
+  APPSecuritygroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupName: !Sub zoll-messenger-${EnvironmentName}-app
+      GroupDescription: SG to test RDS
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref WebmessengerSecuritygroup
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref WebmessengerSecuritygroup
+        - IpProtocol: "-1"
+          SourceSecurityGroupId: !Ref ConnectionsSecurityGroup
+        - IpProtocol: "-1"
+          CidrIp: 10.160.80.0/22         
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ebs-messenger-${EnvironmentName}-app
+
+  DBSecuritygroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupName: !Sub zoll-messenger-${EnvironmentName}-rds
+      GroupDescription: SG to test RDS
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ConnectionsSecurityGroup  # Allow from WebmessengerSecuritygroup
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref APPSecuritygroup  # Allow from APPSecuritygroup
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 98.212.107.238/32    
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub rds-sg-${EnvironmentName}-messenger
+
+  WebmessengerSecuritygroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      SecurityGroupName: !Sub ebs-messenger-${EnvironmentName}-web
+      GroupDescription: SG to test RDS
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0   
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ebs-messenger-${EnvironmentName}-web
+
+  ConnectionsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      Name: !Sub ebs-messenger-${EnvironmentName}-connections
+      GroupDescription: Allow all traffic from specified sources
+      VpcId: !Ref VPC  # Replace with your VPC reference
+      SecurityGroupIngress:
+        - IpProtocol: "-1"
+          CidrIp: 4.242.80.211/32
+          Description: Kannan Zoll 365
+        - IpProtocol: "-1"
+          CidrIp: 10.160.81.0/26
+          Description: Internal Network
+        - IpProtocol: "-1"
+          CidrIp: 10.150.32.0/20
+          Description: Internal Network
+        - IpProtocol: "-1"
+          CidrIp: 198.99.238.0/24
+          Description: From Zoll VPN
+        - IpProtocol: "-1"
+          CidrIp: 10.150.16.0/24
+          Description: Internal Network
+        - IpProtocol: "-1"
+          CidrIp: !Ref VpcCIDR
+          Description: From VPC
+        - IpProtocol: "-1"
+          CidrIp: 10.150.35.10/32
+          Description: Internal Host
+        - IpProtocol: "-1"
+          CidrIp: 52.163.191.211/32
+          Description: From Praba Zoll W365
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub zoll-messenger-${EnvironmentName}-connections
+
+##########################################
+#                SNS                     #
+##########################################
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "ElasticBeanstalkNotifications-Environment-Messenger-${EnvironmentName}"
+  SNSSubscription:
+        Type: "AWS::SNS::Subscription"
+        Properties:
+            TopicArn: !Ref SNSTopic
+            Endpoint: "jacob.belica@zoll.com"    # Chnage the mailid accordingly
+            Protocol: "email"
+            Region: !Ref AWS::Region
+
+###########################################
+#          Load Balancer                  #                                        
+###########################################
+  ALBtargetgroup:                                     ######### Target group ###########
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: "/"
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+      IpAddressType: ipv4
+      Matcher: 
+        HttpCode: "200-399"
+      Name: webtargetgroup
+      Port: 80
+      Protocol: HTTP
+      ProtocolVersion: HTTP1
+      TargetType: instance
+      # Type: "application" 
+      TargetGroupAttributes:
+        - Key: "stickiness.enabled"
+          Value: "false" 
+  ApplicationLB:                                       ###### Application load Balance ######
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: "application"
+      IpAddressType: ipv4
+      Name: !Sub "ebs-messenger-${EnvironmentName}-lb"
+      Scheme: "internet-facing"
+      SecurityGroups:
+        - !Ref WebmessengerSecuritygroup
+      Subnets:
+        - !Ref PubSubnet12a
+        - !Ref PubSubnet12b
+  TGListener:                                        ############# Listener #############
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBtargetgroup
+      LoadBalancerArn: !Ref ApplicationLB
+      Port: '80'
+      Protocol: HTTP
+
+#######################################
+#       Elastic BeanStalk             #
+#######################################
+  
+  ElasticBeanstalkApplication:
+        Type: "AWS::ElasticBeanstalk::Application"
+        DependsOn: 
+          - ebsmessengerdevec2role
+          - ebsmessengerdevservicerole
+        Properties:
+            ApplicationName: !Sub "zoll-${EnvironmentName}-messenger"
+          
+  ElasticBeanstalkEnvironment:
+        Type: "AWS::ElasticBeanstalk::Environment"
+        DependsOn: 
+          - ebsmessengerdevec2role
+          - ebsmessengerdevservicerole
+          - ElasticBeanstalkConfigurationTemplate
+        Properties:
+            EnvironmentName: !Sub "Messenger-${EnvironmentName}"
+            ApplicationName: !Sub "zoll-${EnvironmentName}-messenger"
+            CNAMEPrefix: !Sub "zoll-${EnvironmentName}-messenger"
+            SolutionStackName: "64bit Windows Server 2022 v2.17.0 running IIS 10.0"
+            OptionSettings:
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "IamInstanceProfile"
+                Value: !Ref ebsmessengerdevec2roleProfile
+# Key name for EC2                                 
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "EC2KeyName"
+                Value: "Messenger-Dev-KP"
+# VPC and Subnet configuration                
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "AssociatePublicIpAddress"
+                Value: "false"
+              - 
+                Namespace: "aws:ec2:vpc"
+                OptionName: "ELBSubnets"
+                Value: !Join [",", [!Ref PubSubnet12a, !Ref PubSubnet12b]]
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "Subnets"
+                Value: !Join [",", [!Ref SVCSubnet22a, !Ref SVCSubnet22b]]
+              - 
+                ResourceName: "AWSEBSecurityGroup"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "VPCId"
+                Value: !Ref VPC
+            
+########################## Loadbalancer ###############################   
+
+              - 
+                Namespace: "aws:elbv2:loadbalancer"
+                OptionName: "SharedLoadBalancer"
+                Value: !Ref ApplicationLB
+              - 
+                Namespace: "aws:elbv2:listener"
+                OptionName: "Port"
+                Value: 80
+              - 
+                Namespace: "aws:elbv2:listener"
+                OptionName: "Protocol"
+                Value: HTTP
+              - 
+                Namespace: "aws:elbv2:listener"
+                OptionName: "ListenerEnabled"
+                Value: "true"
+              - 
+                Namespace: "aws:elbv2:loadbalancer"
+                OptionName: "SecurityGroups"
+                Value: !Ref APPSecuritygroup
+              - 
+                Namespace: "aws:elasticbeanstalk:environment"
+                OptionName: "LoadBalancerIsShared"
+                Value: "true"
+              - 
+                Namespace: "aws:elasticbeanstalk:environment"
+                OptionName: "LoadBalancerType"
+                Value: "application"
+              - 
+                Namespace: "aws:elasticbeanstalk:environment"
+                OptionName: "EnvironmentType"
+                Value: "LoadBalanced"
+                
+
+######################### SNS ######################################
+              - 
+                Namespace: "aws:elasticbeanstalk:sns:topics"
+                OptionName: "Notification Topic ARN"
+                Value:  !Ref SNSTopic
+              - 
+                Namespace: "aws:elasticbeanstalk:sns:topics"
+                OptionName: "Notification Endpoint"
+                Value: jacob.belica@zoll.com
+              - 
+                Namespace: "aws:elasticbeanstalk:sns:topics"
+                OptionName: "Notification Protocol"
+                Value: email
+############################## Cloudwatch ###########################                
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs"
+                OptionName: "DeleteOnTerminate"
+                Value: "true"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs"
+                OptionName: "RetentionInDays"
+                Value: "7"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs"
+                OptionName: "StreamLogs"
+                Value: "true"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs:health"
+                OptionName: "DeleteOnTerminate"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs:health"
+                OptionName: "HealthStreamingEnabled"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:cloudwatch:logs:health"
+                OptionName: "RetentionInDays"
+                Value: "7"
+# AMI value for AS                
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "ImageId"
+                Value: "ami-09c3f7b994dd25411"
+              - 
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "InstanceType"
+                Value: "t3.medium"
+              - 
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "LaunchTemplateTagPropagationEnabled"
+                Value: "true"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "MonitoringInterval"
+                Value: "5 minute"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "RootVolumeIOPS"
+                Value: "3000"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "RootVolumeSize"
+                Value: "30"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "RootVolumeThroughput"
+                Value: "125"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "RootVolumeType"
+                Value: "gp3"
+              - 
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "SSHSourceRestriction"
+                Value: "tcp,22,22,0.0.0.0/0"
+# Sequrity group for the autoscaling                
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "SecurityGroups"
+                Value: !Ref APPSecuritygroup
+            Tier: 
+                Name: "WebServer"
+                Type: "Standard"
+                Version: "1.0"
+  
+  ElasticBeanstalkConfigurationTemplate:
+        Type: "AWS::ElasticBeanstalk::ConfigurationTemplate"
+        DependsOn: 
+          - ebsmessengerdevec2role
+          - ebsmessengerdevservicerole
+          - ElasticBeanstalkApplication
+        Properties:
+          ApplicationName: !Sub "zoll-${EnvironmentName}-messenger"
+          PlatformArn: !Sub "arn:aws:elasticbeanstalk:${AWS::Region}::platform/IIS 10.0 running on 64bit Windows Server 2022/2.17.0"
+          OptionSettings:
+################################# Autoscaling #####################################
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "Availability Zones"
+                Value: "Any"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "Cooldown"
+                Value: "360"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "EnableCapacityRebalancing"
+                Value: "false"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "MaxSize"
+                Value: "1"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:asg"
+                OptionName: "MinSize"
+                Value: "1"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "BlockDeviceMappings"
+              - 
+                Namespace: "aws:autoscaling:launchconfiguration"
+                OptionName: "DisableIMDSv1"
+                Value: "true"
+
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "BreachDuration"
+                Value: "5"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "EvaluationPeriods"
+                Value: "1"
+              - 
+                ResourceName: "AWSEBAutoScalingScaleDownPolicy"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "LowerBreachScaleIncrement"
+                Value: "-1"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "LowerThreshold"
+                Value: "2000000"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "MeasureName"
+                Value: "NetworkOut"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "Period"
+                Value: "5"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "Statistic"
+                Value: "Average"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmLow"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "Unit"
+                Value: "Bytes"
+              - 
+                ResourceName: "AWSEBAutoScalingScaleUpPolicy"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "UpperBreachScaleIncrement"
+                Value: "1"
+              - 
+                ResourceName: "AWSEBCloudwatchAlarmHigh"
+                Namespace: "aws:autoscaling:trigger"
+                OptionName: "UpperThreshold"
+                Value: "6000000"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+                OptionName: "RollingUpdateEnabled"
+                Value: "false"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+                OptionName: "RollingUpdateType"
+                Value: "Time"
+              - 
+                ResourceName: "AWSEBAutoScalingGroup"
+                Namespace: "aws:autoscaling:updatepolicy:rollingupdate"
+                OptionName: "Timeout"
+                Value: "PT30M"
+
+############################ Cloudformation Template ################
+                
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "AppSource"
+                Value: !Sub "https://s3.dualstack.${AWS::Region}.amazonaws.com/elasticbeanstalk-platform-assets-${AWS::Region}/stalks/eb_windows2022_1.0.806.0_20250118051351/sampleapp/EBSampleApp-Windows.zip"
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "InstancePort"
+                Value: "80"
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "InstanceTypeFamily"
+                Value: "t3"
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "LargerInstanceTypeRequired"
+                Value: "true"
+              - 
+                Namespace: "aws:cloudformation:template:parameter"
+                OptionName: "SystemType"
+                Value: "enhanced"               
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "AssociatePublicIpAddress"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:application"
+                OptionName: "Application Healthcheck URL"
+                Value: "/"                
+
+########################### EC2 ####################################                
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "EnableSpot"
+                Value: "false"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "InstanceTypes"
+                Value: "t3.small,t3.medium"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "SpotAllocationStrategy"
+                Value: "capacity-optimized"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "SpotFleetOnDemandAboveBasePercentage"
+                Value: "0"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "SpotFleetOnDemandBase"
+                Value: "0"
+              - 
+                Namespace: "aws:ec2:instances"
+                OptionName: "SupportedArchitectures"
+                Value: "x86_64"
+              - 
+                ResourceName: "AWSEBEC2LaunchTemplate"
+                Namespace: "aws:ec2:vpc"
+                OptionName: "AssociatePublicIpAddress"
+                Value: "false"
+              - 
+                Namespace: "aws:ec2:vpc"
+                OptionName: "ELBScheme"
+                Value: "public"
+
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "BatchSize"
+                Value: "100"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "BatchSizeType"
+                Value: "Percentage"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "DeploymentPolicy"
+                Value: "AllAtOnce"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "IgnoreHealthCheck"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:command"
+                OptionName: "Timeout"
+                Value: "600"
+              - 
+                Namespace: "aws:elasticbeanstalk:container:dotnet:apppool"
+                OptionName: "Enable 32-bit Applications"
+                Value: "False"
+              - 
+                Namespace: "aws:elasticbeanstalk:container:dotnet:apppool"
+                OptionName: "Target Runtime"
+                Value: "4.0"
+              - 
+                Namespace: "aws:elasticbeanstalk:control"
+                OptionName: "DefaultSSHPort"
+                Value: "22"
+              - 
+                Namespace: "aws:elasticbeanstalk:control"
+                OptionName: "LaunchTimeout"
+                Value: "0"
+              - 
+                Namespace: "aws:elasticbeanstalk:control"
+                OptionName: "LaunchType"
+                Value: "Migration"
+              - 
+                Namespace: "aws:elasticbeanstalk:control"
+                OptionName: "RollbackLaunchOnFailure"
+                Value: "false"
+
+
+# Elastic BeanStalk Servicerole                
+              - 
+                Namespace: "aws:elasticbeanstalk:environment"
+                OptionName: "ServiceRole"
+                Value: !GetAtt ebsmessengerdevservicerole.Arn
+
+              - 
+                Namespace: "aws:elasticbeanstalk:healthreporting:system"
+                OptionName: "ConfigDocument"
+                Value: "{\"Version\":1,\"CloudWatchMetrics\":{\"Instance\":{},\"Environment\":{}},\"Rules\":{\"Environment\":{\"ELB\":{\"ELBRequests4xx\":{\"Enabled\":true}},\"Application\":{\"ApplicationRequests4xx\":{\"Enabled\":true}}}}}"
+              - 
+                Namespace: "aws:elasticbeanstalk:healthreporting:system"
+                OptionName: "EnhancedHealthAuthEnabled"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:healthreporting:system"
+                OptionName: "HealthCheckSuccessThreshold"
+                Value: "Ok"
+              - 
+                Namespace: "aws:elasticbeanstalk:healthreporting:system"
+                OptionName: "SystemType"
+                Value: "enhanced"
+              - 
+                Namespace: "aws:elasticbeanstalk:hostmanager"
+                OptionName: "LogPublicationControl"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions"
+                OptionName: "ManagedActionsEnabled"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions"
+                OptionName: "PreferredStartTime"
+                Value: "WED:17:41"
+# Elastic BeanStalk Servicerole for Updates
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions"
+                OptionName: "ServiceRoleForManagedUpdates"
+                Value: !GetAtt ebsmessengerdevservicerole.Arn
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions:platformupdate"
+                OptionName: "InstanceRefreshEnabled"
+                Value: "false"
+              - 
+                Namespace: "aws:elasticbeanstalk:managedactions:platformupdate"
+                OptionName: "UpdateLevel"
+                Value: "minor"
+              - 
+                Namespace: "aws:elasticbeanstalk:monitoring"
+                OptionName: "Automatically Terminate Unhealthy Instances"
+                Value: "true"
+              - 
+                Namespace: "aws:elasticbeanstalk:xray"
+                OptionName: "XRayEnabled"
+                Value: "false"
+
+              - 
+                Namespace: "aws:rds:dbinstance"
+                OptionName: "HasCoupledDatabase"
+                Value: "false" 
+
+#################################
+#             Endpoint          #
+#################################
+  S3GatewayEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: 'Gateway'
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: '*'
+            Resource: '*'
+ #change the resource accordingly
+      RouteTableIds:
+        - !Ref PvtRouteTable1
+        - !Ref RouteTable1
+      Tags:
+        - Key: Name
+          Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-endpoint"]]
+
+######################################
+#           RDS                      #
+######################################
+  DBSubnetGroup:                    ########## DB Subnet Group #########
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Subnets for RDS database"
+      SubnetIds:
+        - !Ref DBSubnet12b
+        - !Ref DBSubnet12a
+        - !Ref DBSubnet12c
+      Tags:
+        - Key: Name
+          Value: !Sub "rds-postgres-${EnvironmentName}-dbgroup"
+######################## RDS ######################################
+  RDSDBInstance:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      DBInstanceIdentifier: !Sub zoll-${EnvironmentName}-messenger-pgsql
+      AllocatedStorage: !Ref DBAllocatedStorage
+      BackupRetentionPeriod: 7
+      DBInstanceClass: !Ref DBInstanceClass
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Engine: !Ref Engine
+      EngineVersion: !Ref EngineVersion
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: "{{resolve:ssm-secure:/vywus/msgr/master/QA/DBPasswordPostgres:1}}"
+      StorageType: gp3
+      AutoMinorVersionUpgrade: false
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      LicenseModel: !Ref LicenseModel
+      MultiAZ: false
+      EnablePerformanceInsights: true
+      PerformanceInsightsRetentionPeriod: 7
+      EngineLifecycleSupport: open-source-rds-extended-support-disabled
+      StorageEncrypted: true
+      MaxAllocatedStorage: 50
+      VPCSecurityGroups:
+        - !Ref DBSecuritygroup
+      Tags:
+        - Key: Name
+          Value: !Sub "rkp-${EnvironmentName}-rds"
+
+################################################
+#              S3                              #
+################################################
+  MessengerS3Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: !Sub "rkp-messenger-${EnvironmentName}-deployment"
+        VersioningConfiguration:
+          Status: Enabled
+        OwnershipControls:
+          Rules:
+            - ObjectOwnership: BucketOwnerPreferred
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+
+  CreateFolders:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "s3-folder-creator-${AWS::StackName}"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          def lambda_handler(event, context):
+              s3 = boto3.client('s3')
+              bucket_name = event['ResourceProperties']['BucketName']
+              folders = ["MessengerDatafeeder/", "MessengerWeb/", "MessengerDBmigration/"]
+
+              try:
+                  for folder in folders:
+                      s3.put_object(Bucket=bucket_name, Key=folder)
+                  
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+
+  CreateEmptyZipLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "s3-empty-zip-uploader-${AWS::StackName}"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import boto3
+          import zipfile
+          import io
+          import cfnresponse
+
+          def lambda_handler(event, context):
+              s3 = boto3.client('s3')
+              bucket_name = event['ResourceProperties']['BucketName']
+              object_key = "MessengerDBmigration/empty.zip"
+
+              try:
+                  # Create an in-memory ZIP file with a dummy file inside
+                  zip_buffer = io.BytesIO()
+                  with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                      zip_file.writestr("dummy.txt", "This is a placeholder file.")
+
+                  # Upload the non-empty ZIP to S3
+                  s3.put_object(Bucket=bucket_name, Key=object_key, Body=zip_buffer.getvalue())
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "s3-lambda-role-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: S3WriteAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${MessengerS3Bucket}/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  FolderCreationTrigger:
+    Type: Custom::S3Folders
+    Properties:
+      ServiceToken: !GetAtt CreateFolders.Arn
+      BucketName: !Ref MessengerS3Bucket
+
+  TriggerEmptyZipCreation:
+    Type: Custom::S3Folders
+    Properties:
+      ServiceToken: !GetAtt CreateEmptyZipLambda.Arn
+      BucketName: !Ref MessengerS3Bucket
+
+
+
+######################################### 
+#           Lambda                      #
+#########################################
+  Lambda:
+    Type: AWS::Lambda::Function
+    DependsOn: TriggerEmptyZipCreation
+    Properties:
+      Architectures:
+          - x86_64
+      Description: Lambda function for Data Migration
+      FunctionName: !Sub "rkp-${EnvironmentName}-messenger-lambda"
+      Code:
+        S3Bucket: !Ref MessengerS3Bucket
+        S3Key: "MessengerDBmigration/empty.zip"
+      Runtime: dotnet8
+      Timeout: 120
+      MemorySize: 512
+      Handler: "index.handler"
+      Role: !GetAtt LambdaIAMRole.Arn
+      Environment: 
+        Variables: 
+          FILE_CACHE_PATH: "/tmp"
+      TracingConfig: 
+        Mode: PassThrough
+      EphemeralStorage: 
+        Size: 512
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref APPSecuritygroup
+          - !Ref ConnectionsSecurityGroup
+        SubnetIds:
+          - !Ref SVCSubnet22b
+          - !Ref SVCSubnet22a
+
+  LambdaUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      AuthType: AWS_IAM  # Change to AWS_IAM if you want to restrict access
+      TargetFunctionArn: !GetAtt Lambda.Arn          
+      InvokeMode: RESPONSE_STREAM
+
+  LambdaFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref Lambda
+      Principal: "*"
+      FunctionUrlAuthType: AWS_IAM  # Change this if restricting access
+
+
+
+

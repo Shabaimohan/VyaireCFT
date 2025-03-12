@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create an S3 bucket with versioning, encryption, and predefined folders.
+
+Resources:
+  MessengerS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "messenger-bucket-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  CreateFolders:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "s3-folder-creator-${AWS::StackName}"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          def lambda_handler(event, context):
+              s3 = boto3.client('s3')
+              bucket_name = event['ResourceProperties']['BucketName']
+              folders = ["MessengerDatafeeder/", "MessengerWeb/", "MessengerDBmigration/"]
+
+              try:
+                  for folder in folders:
+                      s3.put_object(Bucket=bucket_name, Key=folder)
+                  
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+
+  CreateEmptyZipLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "s3-empty-zip-uploader-${AWS::StackName}"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import boto3
+          import zipfile
+          import io
+          import cfnresponse
+
+          def lambda_handler(event, context):
+              s3 = boto3.client('s3')
+              bucket_name = event['ResourceProperties']['BucketName']
+              object_key = "MessengerDBmigration/empty.zip"
+
+              try:
+                  # Create an in-memory ZIP file
+                  zip_buffer = io.BytesIO()
+                  with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+                      pass  # Empty ZIP
+
+                  # Upload empty.zip to S3
+                  s3.put_object(Bucket=bucket_name, Key=object_key, Body=zip_buffer.getvalue())
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {"Error": str(e)})
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "s3-lambda-role-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: S3WriteAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${MessengerS3Bucket}/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  FolderCreationTrigger:
+    Type: Custom::S3Folders
+    Properties:
+      ServiceToken: !GetAtt CreateFolders.Arn
+      BucketName: !Ref MessengerS3Bucket
+
+  TriggerEmptyZipCreation:
+    Type: Custom::S3Folders
+    Properties:
+      ServiceToken: !GetAtt CreateEmptyZipLambda.Arn
+      BucketName: !Ref MessengerS3Bucket
+
+Outputs:
+  S3BucketName:
+    Description: The name of the created S3 bucket.
+    Value: !Ref MessengerS3Bucket
+
+  EmptyZipFile:
+    Description: The location of the empty.zip file
+    Value: !Sub "s3://${MessengerS3Bucket}/MessengerDBmigration/empty.zip"

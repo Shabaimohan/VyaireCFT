@@ -65,10 +65,11 @@ ForEach ($Param in $Parameters) {
             If ($Path -eq "" -and $ExistingParam) {
                 $SkipUpdate = $true
                 break
-            } ElseIf (Test-Path $Path -PathType Leaf) {
-                $Bytes = Get-Content $Path -Encoding Byte
+            } ElseIf (Test-Path "$Path" -PathType Leaf) {
+                # Read APNS certificate correctly
+                $Bytes = [System.IO.File]::ReadAllBytes($Path)
                 $Base64 = [Convert]::ToBase64String($Bytes)
-                $Value = ConvertTo-SecureString $Base64 -AsPlainText -Force
+                $Value = $Base64
             } Else {
                 Write-Host " - ${ParamName}: Could not find file at: $Path" -ForegroundColor Yellow
                 $First = $true
@@ -90,11 +91,6 @@ ForEach ($Param in $Parameters) {
     }
 
     If (-not $SkipUpdate) {
-        # Convert SecureString to PlainText
-        $BSTR = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Value)
-        $PlainTextValue = [Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
-
         # Set tier based on parameter name
         $Tier = "Standard"
         If ($Param[0] -eq "apns-certificate") {
@@ -103,10 +99,10 @@ ForEach ($Param in $Parameters) {
 
         # Check if parameter exists
         If ($ExistingParam) {
-            aws ssm put-parameter --name $ParamName --value $PlainTextValue --type "SecureString" --tier $Tier --overwrite --region $Region | Out-Null
+            aws ssm put-parameter --name $ParamName --value $Value --type "SecureString" --tier $Tier --overwrite --region $Region | Out-Null
             Write-Host "  - Updated parameter: $ParamName ($Tier Tier)" -ForegroundColor Green
         } Else {
-            aws ssm put-parameter --name $ParamName --description $Prompt --value $PlainTextValue --type "SecureString" --tier $Tier --region $Region | Out-Null
+            aws ssm put-parameter --name $ParamName --description $Prompt --value $Value --type "SecureString" --tier $Tier --region $Region | Out-Null
             Write-Host "  - Created new parameter: $ParamName ($Tier Tier)" -ForegroundColor Green
         }
     } Else {

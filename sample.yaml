@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation Template with an Inline IAM Policy
+Parameters:
+  EnvironmentName:
+    Type: String  
+    Default: dev
+
+Resources:
+  MyIAMRole:                      # lambda role
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "metrics-transform-lambda-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: rkp-lambda-role
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - tag:GetResources
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - apigateway:GET
+                  - aps:ListWorkspaces
+                  - autoscaling:DescribeAutoScalingGroups
+                  - dms:DescribeReplicationInstances
+                  - dms:DescribeReplicationTasks
+                  - ec2:DescribeTransitGatewayAttachments
+                  - ec2:DescribeSpotFleetRequests
+                  - storagegateway:ListGateways
+                  - storagegateway:ListTagsForResource
+                Resource: "*"
+              - Sid: ""
+                Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                Resource: "arn:aws:logs:*:*:*"
+
+  ebsmessengerdevec2role:    #EBS to EC2
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "ebs-messenger-${EnvironmentName}-ec2-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+

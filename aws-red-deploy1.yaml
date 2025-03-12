@@ -2,7 +2,7 @@
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: >
-  This template is used to deploy base infra for the rkp environment.
+  This template is used to deploy base infra for the rkp red environment.
 Parameters:
   Region:
     Default: us-east-2
@@ -19,7 +19,7 @@ Parameters:
     Type: String
     Default: 10.0.0.0/16
 
-  PubSubnet12bCIDR:
+  PubSubnet22bCIDR:
     Description: Please enter the IP range (CIDR notation) for this Subnet
     Type: String
     Default: 10.0.1.0/24
@@ -29,7 +29,7 @@ Parameters:
     Type: String
     Default: 10.0.2.0/24
 
-  webSubnet32bCIDR:
+  webSubnet22bCIDR:
     Description: Please enter the IP range (CIDR notation) for this subnet
     Type: String
     Default: 10.0.3.0/24
@@ -44,7 +44,7 @@ Parameters:
     Type: String
     Default: 10.0.5.0/24
 
-  webSubnet32aCIDR:
+  webSubnet12aCIDR:
     Description: Please enter the IP range (CIDR notation) for this subnet
     Type: String
     Default: 10.0.6.0/24
@@ -59,7 +59,7 @@ Parameters:
     Type: String
     Default: 10.0.8.0/24
 
-  PresSubnet32bCIDR:
+  PresSubnet22bCIDR:
     Description: Please enter the IP range (CIDR notation) for this subnet
     Type: String
     Default: 10.0.9.0/24
@@ -69,12 +69,12 @@ Parameters:
     Type: String
     Default: 10.0.10.0/24
 
-  SVCSubnet22aCIDR:
+  SVCSubnet12aCIDR:
     Description: Please enter the IP range (CIDR notation) for this subnet
     Type: String
     Default: 10.0.11.0/24
 
-  PresSubnet32aCIDR:
+  PresSubnet12aCIDR:
     Description: Please enter the IP range (CIDR notation) for this subnet
     Type: String
     Default: 10.0.12.0/24
@@ -128,10 +128,10 @@ Resources:
 ###################################################
 #               IAM                               #
 ###################################################
-  MyIAMRole:                      # lambda role
+  LambdaIAMRole:                      # lambda role
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "metrics-transform-lambda-${EnvironmentName}"
+      RoleName: !Sub "rkp-lambda-${EnvironmentName}"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -142,6 +142,9 @@ Resources:
             Action:
               - sts:AssumeRole
       Path: /
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole      
       Policies:
         - PolicyName: rkp-lambda-role
           PolicyDocument:
@@ -252,7 +255,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !Ref webSubnet32aCIDR
+      CidrBlock: !Ref webSubnet12aCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -263,7 +266,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !Ref PubSubnet12bCIDR
+      CidrBlock: !Ref PubSubnet22bCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -285,7 +288,7 @@ Resources:
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !Ref webSubnet32bCIDR
+      CidrBlock: !Ref webSubnet22bCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -361,7 +364,7 @@ Resources:
   PublicSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref PubSubnet12b
+      SubnetId: !Ref PubSubnet22b
       RouteTableId: !Ref RouteTable1
 
   MgmtSubnet1RouteTableAssociation:
@@ -399,23 +402,23 @@ Resources:
         - Key: Name
           Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-db-", !Select [ 0, !GetAZs '' ]]]
 
-  SVCSubnet22a:
+  SVCSubnet12a:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !Ref SVCSubnet22aCIDR
+      CidrBlock: !Ref SVCSubnet12aCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
           Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-svcs-", !Select [ 0, !GetAZs '' ]]]
   
-  PresSubnet32a:
+  PresSubnet12a:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
-      CidrBlock: !Ref PresSubnet32aCIDR
+      CidrBlock: !Ref PresSubnet12aCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -443,12 +446,12 @@ Resources:
         - Key: Name
           Value: !Join ['', ["rkp-",!Ref "EnvironmentName", "-svcs-", !Select [ 1, !GetAZs '' ]]]
 
-  PresSubnet32b:
+  PresSubnet22b:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
-      CidrBlock: !Ref PresSubnet32bCIDR
+      CidrBlock: !Ref PresSubnet22bCIDR
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -490,7 +493,7 @@ Resources:
   SVCSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref SVCSubnet22a
+      SubnetId: !Ref SVCSubnet12a
       RouteTableId: !Ref PvtRouteTable1
 
   SVCSubnet2RouteTableAssociation:
@@ -502,13 +505,13 @@ Resources:
   PresSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref PresSubnet32a
+      SubnetId: !Ref PresSubnet12a
       RouteTableId: !Ref PvtRouteTable1
 
   PresSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !Ref PresSubnet32b
+      SubnetId: !Ref PresSubnet22b
       RouteTableId: !Ref PvtRouteTable1
 
   DBSubnet3RouteTableAssociation:
@@ -571,7 +574,7 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub ebs-messenger-${EnvironmentName}-app
+          Value: !Sub zoll-ebs-messenger-${EnvironmentName}-app
 
   DBSecuritygroup:
     Type: AWS::EC2::SecurityGroup
@@ -597,7 +600,7 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub rds-sg-${EnvironmentName}-messenger
+          Value: !Sub zoll-ebs-messenger-${EnvironmentName}-rds
 
   WebmessengerSecuritygroup:
     Type: AWS::EC2::SecurityGroup
@@ -623,7 +626,7 @@ Resources:
           CidrIp: 0.0.0.0/0
       Tags:
         - Key: Name
-          Value: !Sub ebs-messenger-${EnvironmentName}-web
+          Value: !Sub zoll-ebs-messenger-${EnvironmentName}-web
 
   ConnectionsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -662,7 +665,7 @@ Resources:
           Description: Allow all outbound traffic
       Tags:
         - Key: Name
-          Value: !Sub zoll-messenger-${EnvironmentName}-connections
+          Value: !Sub zoll-ebs-messenger-${EnvironmentName}-connections
 
 ##########################################
 #                SNS                     #
@@ -717,7 +720,7 @@ Resources:
         - !Ref WebmessengerSecuritygroup
       Subnets:
         - !Ref PubSubnet12a
-        - !Ref PubSubnet12b
+        - !Ref PubSubnet22b
   TGListener:                                        ############# Listener #############
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
@@ -772,12 +775,12 @@ Resources:
               - 
                 Namespace: "aws:ec2:vpc"
                 OptionName: "ELBSubnets"
-                Value: !Join [",", [!Ref PubSubnet12a, !Ref PubSubnet12b]]
+                Value: !Join [",", [!Ref PubSubnet12a, !Ref PubSubnet22b]]
               - 
                 ResourceName: "AWSEBAutoScalingGroup"
                 Namespace: "aws:ec2:vpc"
                 OptionName: "Subnets"
-                Value: !Join [",", [!Ref SVCSubnet22a, !Ref SVCSubnet22b]]
+                Value: !Join [",", [!Ref SVCSubnet12a, !Ref SVCSubnet22b]]
               - 
                 ResourceName: "AWSEBSecurityGroup"
                 Namespace: "aws:ec2:vpc"
@@ -1263,5 +1266,53 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "rkp-${EnvironmentName}-rds"
+
+######################################### 
+#           Lambda                      #
+#########################################
+  Lambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Architectures:
+          - x86_64
+      Description: Lambda function for Data Migration
+      FunctionName: !Sub "rkp-${EnvironmentName}-messenger-lambda"
+      Runtime: dotnet8
+      CodeUri: ./
+      Timeout: 120
+      MemorySize: 256
+      Handler: "index.handler"
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/lambs3"
+      Environment: 
+        Variables: 
+          FILE_CACHE_PATH: "/tmp"
+      TracingConfig: 
+        Mode: PassThrough
+      EphemeralStorage: 
+        Size: 512
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref APPSecuritygroup
+          - !Ref ConnectionsSecurityGroup
+        SubnetIds:
+          - !Ref SVCSubnet12a
+          - !Ref SVCSubnet22b
+
+  LambdaUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      AuthType: AWS_IAM  # Change to AWS_IAM if you want to restrict access
+      TargetFunctionArn: !GetAtt Lambda.Arn          
+      InvokeMode: RESPONSE_STREAM
+
+  LambdaFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref Lambda
+      Principal: "*"
+      FunctionUrlAuthType: AWS_IAM  # Change this if restricting access
+
+
 
 

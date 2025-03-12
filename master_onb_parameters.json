@@ -1,0 +1,98 @@
+[
+    {
+        "ParameterKey": "EnvironmentName",
+        "ParameterValue": "onb"
+    },
+    {
+        "ParameterKey": "VPC",
+        "ParameterValue": "vpc-0f6fe053702d12e28"
+    },
+    {
+        "ParameterKey": "PubSubnet12a",
+        "ParameterValue": "subnet-0d506d71b524c62d0"
+    },
+    {
+        "ParameterKey": "mgmtSubnet12a",
+        "ParameterValue": "subnet-0102a48d3ad42bda1"
+    },
+    {
+        "ParameterKey": "webSubnet12a",
+        "ParameterValue": "subnet-0c90579725bf77939"
+    },
+    {
+        "ParameterKey": "PubSubnet22b",
+        "ParameterValue": "subnet-0b3a37279efcee08b"
+    },
+    {
+        "ParameterKey": "mgmtSubnet22b",
+        "ParameterValue": "subnet-0e511f1e68436d177"
+    },
+    {
+        "ParameterKey": "webSubnet22b",
+        "ParameterValue": "subnet-0c90579725bf77939"
+    },
+    {
+        "ParameterKey": "DBSubnet12a",
+        "ParameterValue": "subnet-0fc8d777fdd5e36c0"
+    },
+    {
+        "ParameterKey": "SVCSubnet12a",
+        "ParameterValue": "subnet-0efd80d124b2fe23a"
+    },
+    {
+        "ParameterKey": "PresSubnet12a",
+        "ParameterValue": "subnet-024600678bf962839"
+    },
+    {
+        "ParameterKey": "DBSubnet22b",
+        "ParameterValue": "subnet-03ea82b8033c77499"
+    },
+    {
+        "ParameterKey": "SVCSubnet22b",
+        "ParameterValue": "subnet-03aaa4999c6fdbf7e"
+    },
+    {
+        "ParameterKey": "PresSubnet22b",
+        "ParameterValue": "subnet-0cd894ecc871089d6"
+    },
+    {
+        "ParameterKey": "DBSubnet32c",
+        "ParameterValue": "subnet-065cfafb01406aee2"
+    },
+    {
+        "ParameterKey": "ApplicationLB",
+        "ParameterValue": "arn:aws:elasticloadbalancing:us-east-2:982081078562:loadbalancer/app/rkp-onb-iis/61755949cc7a0691"
+    },
+    {
+        "ParameterKey": "DBSecuritygroup",
+        "ParameterValue": "sg-0e2028d094da8fe24"
+    },
+    {
+        "ParameterKey": "DBInstanceClass",
+        "ParameterValue": "db.t3.medium"
+    },
+    {
+        "ParameterKey": "Engine",
+        "ParameterValue": "postgres"
+    },
+    {
+        "ParameterKey": "EngineVersion",
+        "ParameterValue": "16.3"
+    },
+    {
+        "ParameterKey": "DBAllocatedStorage",
+        "ParameterValue": "50"
+    },
+    {
+        "ParameterKey": "LBSecuritygroup",
+        "ParameterValue": "sg-00a869230068f5f69"
+    },
+    {
+        "ParameterKey": "DBUsername",
+        "ParameterValue": "postgres"
+    },
+    {
+        "ParameterKey": "LicenseModel",
+        "ParameterValue": "postgresql-license"
+    }
+]
